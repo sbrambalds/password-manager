@@ -110,8 +110,8 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
 
     (NavigateCardsEvent navigationEvent) ->
       case navigationEvent of
-        Move             i -> updateCardManagerState defaultPage (cardManagerState {                                 highlightedEntry = Just i })
-        Close       maybei -> updateCardManagerState defaultPage (cardManagerState {cardViewState = NoCard,          highlightedEntry = maybei })
+        Move         entry -> updateCardManagerState defaultPage (cardManagerState {                        highlightedEntry = entry })
+        Close        entry -> updateCardManagerState defaultPage (cardManagerState {cardViewState = NoCard, highlightedEntry = entry })
         Open   Nothing     -> doNothing defaultPage
         Open  (Just entry) -> do
           ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache entry (Main defaultPage) proxyInfo

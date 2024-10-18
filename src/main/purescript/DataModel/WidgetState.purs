@@ -89,7 +89,7 @@ derive instance eqCardViewState :: Eq CardViewState
 
 type CardManagerState = { 
   filterData          :: FilterData
-, highlightedEntry    :: Maybe Int
+, highlightedEntry    :: Maybe CardEntry
 , cardViewState       :: CardViewState
 , showShortcutsHelp   :: Boolean
 , showDonationOverlay :: Boolean

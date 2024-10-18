@@ -93,7 +93,7 @@ indexFilterView filterData@{archived, filter, searchString} (Index {entries}) =
         , ol [Props._id "tagFilter"] (
                 (\tag -> getFilterListElement (Tag tag) tag [] (filter == Tag tag)) 
             <$> (sort $ nub $ fold $ (\(CardEntry { tags }) -> toUnfoldable tags) 
-            <$> (shownEntries entries Nothing archived))
+            <$> (shownEntries entries Nothing Nothing archived))
           )
         ] <#> updateFilter
       ]
@@ -131,14 +131,14 @@ indexFilterView filterData@{archived, filter, searchString} (Index {entries}) =
     filterCardsNumber :: Filter -> Int
     filterCardsNumber filter' =
       case filter' of
-        Recent                -> min numberOfRecent (length $ shownEntries entries Nothing archived)
-        filter_               -> length (filteredEntries filter_ $ shownEntries entries Nothing archived)
+        Recent                -> min numberOfRecent (length $ shownEntries entries Nothing Nothing archived)
+        filter_               -> length (filteredEntries filter_ $ shownEntries entries Nothing Nothing archived)
 
     min :: Int -> Int -> Int
     min n n' = if n < n' then n else n'
 
-shownEntries :: List CardEntry -> Maybe CardEntry -> Boolean -> List CardEntry
-shownEntries entries selectedEntry archived = List.filter (\(CardEntry r) -> archived || (not r.archived) || (Just (CardEntry r) == selectedEntry)) entries
+shownEntries :: List CardEntry -> Maybe CardEntry -> Maybe CardEntry -> Boolean -> List CardEntry
+shownEntries entries selectedEntry highlightedEntry archived = List.filter (\(CardEntry r) -> archived || (not r.archived) || (Just (CardEntry r) == selectedEntry) || (Just (CardEntry r) == highlightedEntry)) entries
 
 filteredEntries :: Filter -> List CardEntry -> List CardEntry
 filteredEntries filter = case filter of

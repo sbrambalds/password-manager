@@ -60,7 +60,7 @@ data CardManagerEvent = AddCardEvent        Card
                       | UpdateCardForm      CardFormData
                       | NoEvent
 
-data NavigateCardsEvent = Move Int | Open (Maybe CardEntry) | Close (Maybe Int)
+data NavigateCardsEvent = Move (Maybe CardEntry) | Open (Maybe CardEntry) | Close (Maybe CardEntry)
 
 cardManagerInitialState :: CardManagerState
 cardManagerInitialState = {
@@ -85,7 +85,7 @@ cardsManagerView state@{filterData: filterData@{filterViewStatus, filter, archiv
         , div [Props.className "addCard"] [
             button [Props.onClick, Props.className "addCard" ] [span [] [text "add card"]] $> OpenCardFormEvent Nothing
           ]
-        , (indexView sortedCards proxyInfo getOpenedCard getHighlightedEntry) <#> (NavigateCardsEvent <<< Open <<< Just)
+        , (indexView sortedCards proxyInfo getOpenedCard getHighlightedIndex) <#> (NavigateCardsEvent <<< Open <<< Just)
         , donationButton (donationLevel == DonationInfo)
         ]
       , div [Props._id "card"] [
@@ -107,7 +107,7 @@ cardsManagerView state@{filterData: filterData@{filterViewStatus, filter, archiv
       Card     _ _       -> "CardViewOpen"
 
     sortedCards :: List CardEntry
-    sortedCards  = filteredEntries filter (shownEntries entries selectedEntry archived)
+    sortedCards  = filteredEntries filter (shownEntries entries selectedEntry highlightedEntry archived)
 
     selectedEntry :: Maybe CardEntry
     selectedEntry = case cardViewState of
@@ -115,22 +115,25 @@ cardsManagerView state@{filterData: filterData@{filterViewStatus, filter, archiv
       CardForm _ (ModifyCard _ entry) -> Just entry
       _                               -> Nothing
 
-    getHighlightedEntry :: Maybe Int
-    getHighlightedEntry = highlightedEntry <|> (selectedEntry >>= flip elemIndex sortedCards)
+    getHighlightedEntry :: Maybe CardEntry
+    getHighlightedEntry = highlightedEntry <|> selectedEntry
+    
+    getHighlightedIndex :: Maybe Int
+    getHighlightedIndex = getHighlightedEntry >>= flip elemIndex sortedCards
 
     getOpenedCard :: Maybe CardEntry
     getOpenedCard = case cardViewState of
                       Card _ cardEntry -> Just cardEntry
                       _                -> Nothing
 
-    increaseIndex :: Int -> Int
-    increaseIndex numberOfCards = min (numberOfCards-1) (maybe 0 (add 1)      getHighlightedEntry)
+    nextCardEntry     :: Maybe CardEntry
+    nextCardEntry     = index sortedCards (min (length sortedCards - 1) (maybe 0 (add 1)      getHighlightedIndex))
     
-    decreaseIndex ::        Int
-    decreaseIndex               = max  0                (maybe 0 (flip sub 1) getHighlightedEntry)
+    previousCardEntry :: Maybe CardEntry
+    previousCardEntry = index sortedCards (max  0                       (maybe 0 (flip sub 1) getHighlightedIndex))
 
-    getCardToOpen :: List CardEntry -> Maybe CardEntry
-    getCardToOpen entries' = highlightedEntry >>= (index entries')
+    -- getCardToOpen :: List CardEntry -> Maybe CardEntry
+    -- getCardToOpen entries' = highlightedEntry >>= (index entries')
 
     getFilterHeader :: forall a. Filter -> Widget HTML a
     getFilterHeader f =
@@ -161,9 +164,9 @@ cardsManagerView state@{filterData: filterData@{filterViewStatus, filter, archiv
         key
           | eq   key  "*"                          ->  ChangeFilterEvent initialFilterData
           | eq   key  "/"                          ->  ChangeFilterEvent filterData {filterViewStatus = FilterViewOpen, filter = Search searchString, selected = true}
-          | elem key ["k", "ArrowUp"             ] -> (NavigateCardsEvent $ Move (decreaseIndex                     ))
-          | elem key ["j", "ArrowDown"           ] -> (NavigateCardsEvent $ Move (increaseIndex (length sortedCards)))
-          | elem key ["l", "ArrowRight", "Enter" ] -> (NavigateCardsEvent $ Open (getCardToOpen sortedCards         ))
+          | elem key ["k", "ArrowUp"             ] -> (NavigateCardsEvent $ Move (previousCardEntry))
+          | elem key ["j", "ArrowDown"           ] -> (NavigateCardsEvent $ Move (nextCardEntry    ))
+          | elem key ["l", "ArrowRight", "Enter" ] -> (NavigateCardsEvent $ Open (highlightedEntry ))
           | elem key ["h", "ArrowLeft" , "Escape"] -> if showShortcutsHelp
                                                 then   ShowShortcutsEvent   false
                                                 else  (NavigateCardsEvent $ Close getHighlightedEntry)

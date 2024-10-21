@@ -18,6 +18,7 @@ import Data.Array (filter, foldM, length, snoc)
 import Data.Codec.Argonaut (encode)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either(..), isRight)
+import Data.Eq ((==))
 import Data.FoldableWithIndex (foldWithIndexM)
 import Data.Function (flip, (#), ($))
 import Data.HTTP.Method (Method(..))
@@ -26,7 +27,7 @@ import Data.HeytingAlgebra (not)
 import Data.Lens (view)
 import Data.List (List(..), fromFoldable, (:))
 import Data.List as List
-import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid ((<>))
 import Data.Newtype (unwrap)
 import Data.Show (show)
@@ -43,7 +44,7 @@ import DataModel.FragmentState as Fragment
 import DataModel.IndexVersions.Index (CardEntry(..), CardReference(..), Index(..), _card_reference, _index_identifier, addToIndex)
 import DataModel.Proxy (DataOnLocalStorage(..), DynamicProxy(..), Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy, discardResult)
 import DataModel.UserVersions.User (IndexReference(..), UserInfo(..), _index_reference, _userInfo_identifier, _userInfo_reference)
-import DataModel.WidgetState (CardManagerState, CardViewState(..), ImportStep(..), LoginType(..), Page(..), UserAreaPage(..), UserAreaState, WidgetState(..), MainPageWidgetState)
+import DataModel.WidgetState (CardManagerState, CardViewState(..), ImportStep(..), LoginType(..), MainPageWidgetState, Page(..), UserAreaPage(..), UserAreaState, WidgetState(..))
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Card (addTag)
@@ -58,7 +59,7 @@ import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Import (ImportVersion(..), decodeImport, parseImport, readFile)
 import Functions.Index (updateIndex)
-import Functions.Pin (deleteCredentials, makeKey, saveCredentials)
+import Functions.Pin (deleteCredentials, makeKey, pinExists, saveCredentials)
 import Functions.State (resetState)
 import Functions.Time (formatDateTimeToDate, getCurrentDateTime)
 import Functions.Timer (activateTimer, stopTimer)
@@ -79,11 +80,11 @@ import Web.Storage.Storage (getItem)
 handleUserAreaEvent :: UserAreaEvent -> CardManagerState -> UserAreaState -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 
 
-handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, srpConf, hash: hashFunc, cardsCache, username: Just username, password: Just password, index: Just index, userInfo: Just userInfo@(UserInfo {indexReference: IndexReference { reference: indexRef}, userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, c: Just c, p: Just p, s: Just s, masterKey: Just masterKey, pinEncryptedPassword, enableSync, donationLevel: Just donationLevel, syncDataWire} proxyInfo f = do
+handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, srpConf, hash: hashFunc, cardsCache, username: Just username, password: Just password, index: Just index, userInfo: Just userInfo@(UserInfo {indexReference: IndexReference { reference: indexRef}, userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, c: Just c, p: Just p, s: Just s, masterKey: Just masterKey, pinExists, enableSync, donationLevel: Just donationLevel, syncDataWire} proxyInfo f = do
   let defaultPage = { index
                     , credentials:      {username, password}
                     , donationInfo
-                    , pinExists:        isJust pinEncryptedPassword
+                    , pinExists
                     , enableSync
                     , userPreferences
                     , userAreaState
@@ -174,13 +175,13 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
       >>= handleOperationResult state errorPage true White
     
     (SetPinEvent pinAction) ->
-      let page = Main defaultPage { pinExists = case pinAction of
-                                                  Reset    -> false
-                                                  SetPin _ -> true
-                                  }
+      let pinExists' = case pinAction of
+                        Reset    -> false
+                        SetPin _ -> true
+          page = Main defaultPage {pinExists = pinExists'}
       in do
         storage               <- liftEffect $ window >>= localStorage
-        pinEncryptedPassword' <- runStep (case pinAction of
+        _                     <- runStep (case pinAction of
                                           Reset      -> (liftEffect $ deleteCredentials storage)  $> Nothing
                                           SetPin pin -> (saveCredentials state pin storage)      <#> Just
                                         ) (WidgetState
@@ -192,7 +193,7 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
                                             proxyInfo
                                           )
         pure (Tuple 
-                (state {pinEncryptedPassword = pinEncryptedPassword'})
+                (state {pinExists = pinExists'})
                 (WidgetState
                   hiddenOverlayInfo
                   page
@@ -454,18 +455,29 @@ logoutSteps state@{username, hash: hashFunc, proxy, srpConf} logoutType page pro
 
     stopTimer # liftEffect
 
-    passphrase <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "passphrase")) (WidgetState (spinnerOverlay message White) page proxyInfo)
-    
+    localStorageUsername <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "user"))       (WidgetState (spinnerOverlay message White) page proxyInfo)    
+    pinExists            <- pinExists # liftEffect
+
     pure $ Tuple 
-            ((resetState state) {username = username, pinEncryptedPassword = hex <$> passphrase, proxy = proxy'})
+            ((resetState state) {pinExists =pinExists , proxy = proxy'})
             (WidgetState
               hiddenOverlayInfo
               (Login emptyLoginFormData { credentials = emptyCredentials {username = logoutTypeUserame username logoutType}
-                                        , loginType   = if isNothing passphrase then CredentialLogin else PinLogin
+                                        , loginType   = loginType localStorageUsername pinExists
                                         }
               )
               proxyInfo
             ) 
+  where
+    loginType :: Maybe String -> Boolean -> LoginType
+    loginType localStorageUsername pinExists =
+      if pinExists
+      then
+        case logoutType of
+          Lock   -> if (localStorageUsername == username) then PinLogin else CredentialLogin
+          Logout -> PinLogin
+      else CredentialLogin
+
 
 deleteCardsSteps :: ConnectionState -> CardsCache -> Index -> Page -> ProxyInfo -> ExceptT AppError (Widget HTML) (ProxyResponse Unit)
 deleteCardsSteps connectionState cardsCache (Index {entries}) page proxyInfo =

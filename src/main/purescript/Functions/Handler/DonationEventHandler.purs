@@ -40,11 +40,11 @@ import Views.UserAreaView (userAreaInitialState)
 
 handleDonationPageEvent :: DonationPageEvent -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 
-handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s, srpConf, username: Just username, password: Just password, index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, pinEncryptedPassword, enableSync, syncDataWire, donationLevel: Just donationLevel} proxyInfo fragmentState = do
+handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s, srpConf, username: Just username, password: Just password, index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} proxyInfo fragmentState = do
   let defaultPage = { index
                     , credentials:      {username, password}
                     , donationInfo
-                    , pinExists:        isJust pinEncryptedPassword
+                    , pinExists
                     , enableSync
                     , userPreferences
                     , userAreaState:    userAreaInitialState

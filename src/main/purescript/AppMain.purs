@@ -3,7 +3,6 @@ module AppMain ( main ) where
 import Concur.Core.Patterns (local)
 import Concur.React.Run (runWidgetInDom)
 import Control.Alt ((<#>), (<|>))
-import Control.Alternative (pure)
 import Control.Bind (bind, discard, (=<<), (>>=))
 import Control.Category ((<<<))
 import Data.Argonaut.Parser (jsonParser)
@@ -13,7 +12,6 @@ import Data.Codec.Argonaut (JsonDecodeError(..), decode)
 import Data.Either (Either(..), note)
 import Data.Function ((#), ($))
 import Data.Functor ((<$>))
-import Data.HexString (HexString, hex)
 import Data.Map (fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.String (split)
@@ -27,7 +25,7 @@ import DataModel.FragmentState as Fragment
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Foreign (unsafeToForeign)
-import Functions.Pin (makeKey)
+import Functions.Pin (pinExists)
 import Functions.State (computeInitialState)
 import JSURI (decodeURI)
 import OperationalWidgets.App (app)
@@ -36,29 +34,21 @@ import Record (merge)
 import Web.HTML (Window, window)
 import Web.HTML.History (DocumentTitle(..), URL(..), replaceState)
 import Web.HTML.Location (hash, pathname)
-import Web.HTML.Window (history, localStorage, location)
-import Web.Storage.Storage (getItem)
+import Web.HTML.Window (history, location)
 
 main :: Effect Unit
 main = do
   fragmentState <- parseFragment <$> (window >>= location >>= hash)
   
-  credentials   <- getCredentialsFromLocalStorage
+  pinExists <- pinExists
 
   window >>= removeFragment
   
   runWidgetInDom "app" $ local baseSyncData \wire -> do
-    appState    <- computeInitialState wire # liftEffect <#> merge credentials
+    appState    <- computeInitialState wire # liftEffect <#> merge {pinExists}
     app appState fragmentState <|> executeLocalStorageSynOperations wire
 
 -- ---------------------------------------------
-
-getCredentialsFromLocalStorage :: Effect { username :: Maybe String, pinEncryptedPassword :: Maybe HexString }
-getCredentialsFromLocalStorage = do
-  storage    <- window >>= localStorage
-  user       <- getItem (makeKey "user")       storage
-  passphrase <- getItem (makeKey "passphrase") storage
-  pure $ {username: user, pinEncryptedPassword: hex <$> passphrase}
 
 removeFragment :: Window -> Effect Unit
 removeFragment w = do

@@ -21,7 +21,7 @@ type AppState =
   { proxy :: Proxy
   , username :: Maybe String
   , password :: Maybe String
-  , pinEncryptedPassword :: Maybe HexString
+  , pinExists :: Boolean
   , c :: Maybe HexString
   , p :: Maybe HexString
   , s :: Maybe HexString

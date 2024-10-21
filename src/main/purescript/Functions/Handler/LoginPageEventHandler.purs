@@ -68,10 +68,10 @@ handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
     initialPage = (Login emptyLoginFormData {credentials = cred})
 
 
-handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf, username, pinEncryptedPassword} proxyInfo fragmentState = do
+handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState = do
   do
-    cred               <- runStep (decryptPassphraseWithPin hash pin username pinEncryptedPassword) (WidgetState (spinnerOverlay "Decrypt with PIN" Black) initialPage proxyInfo)
-    prepareLoginResult <- runStep (prepareLogin srpConf cred)                                       (WidgetState (spinnerOverlay "Prepare login"    Black) initialPage proxyInfo)
+    cred               <- runStep (decryptPassphraseWithPin hash pin) (WidgetState (spinnerOverlay "Decrypt with PIN" Black) initialPage proxyInfo)
+    prepareLoginResult <- runStep (prepareLogin srpConf cred)         (WidgetState (spinnerOverlay "Prepare login"    Black) initialPage proxyInfo)
     res                <- loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
     pure res
   

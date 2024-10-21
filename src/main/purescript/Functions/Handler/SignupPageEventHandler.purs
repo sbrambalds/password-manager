@@ -7,7 +7,6 @@ import Control.Bind (bind, (>>=))
 import Control.Monad.Except.Trans (runExceptT)
 import Data.Function ((#), ($))
 import Data.HexString (hex)
-import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import DataModel.AppState (AppState)
 import DataModel.FragmentState as Fragment
@@ -21,8 +20,8 @@ import Views.OverlayView (OverlayColor(..), hiddenOverlayInfo, spinnerOverlay)
 import Views.SignupFormView (SignupPageEvent(..), getSignupDataFromCredentials)
 
 getLoginFormData :: AppState -> LoginFormData
-getLoginFormData {username: Just _, pinEncryptedPassword: Just _} = emptyLoginFormData { loginType = PinLogin }
-getLoginFormData _ = emptyLoginFormData
+getLoginFormData {pinExists: true} = emptyLoginFormData { loginType = PinLogin }
+getLoginFormData _                 = emptyLoginFormData
 
 handleSignupPageEvent :: SignupPageEvent -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 

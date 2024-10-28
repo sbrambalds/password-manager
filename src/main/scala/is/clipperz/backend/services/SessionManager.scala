@@ -27,6 +27,8 @@ case class Session(val key: SessionKey, val content: SessionContent):
 trait SessionManager:
   def getSession(request: Request): Task[Session]
   def saveSession(content: Session): Task[SessionKey]
+  def updateSession(req: Request, newC: String): Task[SessionKey] =
+    getSession(req).map(_ + ("c", newC)).flatMap(saveSession(_))
   def verifySessionUser(c: String, session: Session): Boolean =
     session("c") match
       case Some(session_c) => session_c == c

@@ -58,8 +58,9 @@ Routes(
         ZIO
         .service[UserArchive]
         .zip(ZIO.service[BlobArchive])
+        .zip(ZIO.service[SessionManager])
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((userArchive, blobArchive, content) =>
+        .flatMap((userArchive, blobArchive, sessionManager, content) =>
             userArchive
             .getUser(HexString(c))
             .flatMap(optionalUser =>
@@ -82,7 +83,9 @@ Routes(
                     then
                         (userArchive.saveUser(remoteFromRequest(userCard), true))
                         <&>
-                        userArchive.deleteUser(HexString(c))
+                        (sessionManager.updateSession(request, userCard.c.toString()))
+                        <&>
+                        (userArchive.deleteUser(HexString(c)))
                     else
                         ZIO.fail(new BadRequestException("origin does not match"))
                     )

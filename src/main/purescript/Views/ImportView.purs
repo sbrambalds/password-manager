@@ -3,23 +3,24 @@ module Views.ImportView where
 import Concur.Core (Widget)
 import Concur.Core.FRP (demand, fireOnce, loopS, loopW)
 import Concur.React (HTML)
-import Concur.React.DOM (a, a', br', button, div, div_, form, h1, h3, h5, input, label, li_, p, span, text, ul_)
+import Concur.React.DOM (a, a', br', button, dd, div, div_, dl, dt, form, h1, h3, h5, input, label, li', li_, p, span, text, ul, ul_)
 import Concur.React.Props as Props
 import Control.Alt (map, ($>), (<#>), (<|>))
 import Control.Applicative (pure)
 import Control.Bind (bind, (>>=))
 import Control.Category ((>>>))
-import Data.Array (filter, head, length)
+import Data.Array (concat, filter, head, length)
 import Data.Either (Either(..), fromRight)
-import Data.Function ((#), ($))
+import Data.Function (flip, (#), ($))
 import Data.Functor ((<$>), (<$))
 import Data.HeytingAlgebra (not)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Semigroup ((<>))
+import Data.Set (insert, toUnfoldable)
 import Data.Show (show)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..), fst, snd, swap)
-import DataModel.CardVersions.Card (Card(..), CardValues(..))
+import DataModel.CardVersions.Card (Card(..), CardField(..), CardValues(..))
 import DataModel.WidgetState (ImportState, ImportStep(..))
 import React.SyntheticEvent (NativeEventTarget, SyntheticEvent_)
 import Unsafe.Coerce (unsafeCoerce)
@@ -100,10 +101,9 @@ importView state@{step, content, selection, tag} = do
               loopW selected (\v ->
                 label [Props.className "select_card"] [
                   span  [Props.className "label"] [
-                    -- cardContentView card $ if selectionInfo.tagSelected 
-                    --                        then Just selectionInfo.tag
-                    --                        else Nothing
-                    cardContentView card
+                    cardContentView card $ if selectionInfo.tagSelected 
+                                           then Just selectionInfo.tag
+                                           else Nothing
                   ]
                 , input [Props._type "checkbox", Props.checked v, Props.onChange] $> (not v)
                 ]
@@ -148,20 +148,18 @@ importView state@{step, content, selection, tag} = do
     filterCards Archived    = map (\(Tuple _ c@(Card r)) -> Tuple  r.archived      c)
     filterCards NonArchived = map (\(Tuple _ c@(Card r)) -> Tuple (not r.archived) c)
 
-    -- cardContentView :: forall a. Card -> Maybe String -> Widget HTML a
-    -- cardContentView (Card {content: (CardValues {title: t, tags: ts, fields: fs, notes: n})}) newTag = 
-    cardContentView :: forall a. Card -> Widget HTML a
-    cardContentView (Card {content: (CardValues {title})}) = 
+    cardContentView :: forall a. Card -> Maybe String -> Widget HTML a
+    cardContentView (Card {content: (CardValues {title, tags: ts, fields: fs, notes: n})}) newTag = 
       div [Props.className "cardContent"] [
         h3 [Props.className "card_title"] [text title]
-      -- , ul [Props.className "card_tags"]   $ (\s -> li' [text s]) <$> (maybe ts (flip insert ts) newTag # toUnfoldable)
-      -- , dl [Props.className "card_fields"] $  concat $ (\(CardField {name, value, locked}) -> [
-      --       dt [] [text name]
-      --     , dd [Props.classList [if locked then (Just "password") else Nothing]] [
-      --         text value
-      --       ]
-      --   ]) <$> fs
-      -- , p [Props.className "card_notes"] [text n]
+      , ul [Props.className "card_tags"]   $ (\s -> li' [text s]) <$> (maybe ts (flip insert ts) newTag # toUnfoldable)
+      , dl [Props.className "card_fields"] $  concat $ (\(CardField {name, value, locked}) -> [
+            dt [] [text name]
+          , dd [Props.classList [if locked then (Just "password") else Nothing]] [
+              text value
+            ]
+        ]) <$> fs
+      , p [Props.className "card_notes"] [text n]
       ]
 
     dragAndDropFileInputWidget :: Widget HTML (Maybe File)

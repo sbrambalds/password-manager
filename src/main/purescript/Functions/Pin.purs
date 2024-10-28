@@ -86,7 +86,7 @@ saveCredentials {username: Just u, password: Just p, hash: hashf} pin storage = 
   liftEffect $ setItem (makeKey "failures")   (show 0)                            storage
 
   pure encryptedCredentials
-saveCredentials _ _ _ = throwError (InvalidStateError (MissingValue "Missing username from state"))
+saveCredentials _ _ _ = throwError (InvalidStateError (MissingValue "Missing username or password from state"))
 
 pinExists :: Effect Boolean
 pinExists = do

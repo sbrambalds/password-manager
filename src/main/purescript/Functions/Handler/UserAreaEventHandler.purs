@@ -9,7 +9,7 @@ import Concur.React (HTML, affAction)
 import Control.Alt (map, ($>), (<#>), (<$>))
 import Control.Alternative ((*>), (<*))
 import Control.Applicative (pure)
-import Control.Bind (bind, discard, (>>=))
+import Control.Bind (bind, discard, (=<<), (>>=))
 import Control.Category (identity, (<<<))
 import Control.Monad.Except (ExceptT(..))
 import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
@@ -166,8 +166,17 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
                                          *> (updateSyncPreference userUpdateInfo.c enableSync # liftEffect)
                                         )                                                   (WidgetState (spinnerOverlay "Update sync preferences" White) page proxyInfo)
 
+        _              <- runStep (liftEffect $ deleteCredentials =<< localStorage
+                                                                  =<< window)               (WidgetState (spinnerOverlay "Reset PIN" White) page proxyInfo)
+
         pure (Tuple 
-          (state {proxy = proxy', c = Just userUpdateInfo.c, p = Just userUpdateInfo.p, s = Just userUpdateInfo.s, masterKey = Just userUpdateInfo.masterKey, password = Just newPassword})
+          (state { proxy = proxy'
+                 , c = Just userUpdateInfo.c, p = Just userUpdateInfo.p, s = Just userUpdateInfo.s
+                 , masterKey = Just userUpdateInfo.masterKey
+                 , password = Just newPassword
+                 , pinExists = false
+                 }
+          )
           (WidgetState hiddenOverlayInfo page proxyInfo)
         )
 

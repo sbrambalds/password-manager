@@ -3,7 +3,7 @@ module Views.ChangePasswordView where
 import Concur.Core (Widget)
 import Concur.Core.FRP (demand, fireOnce, loopS, loopW)
 import Concur.React (HTML)
-import Concur.React.DOM (button, div, form, h1, input, label, span, text)
+import Concur.React.DOM (button, div, form, h1, input, label, p, span, strong, text)
 import Concur.React.Props as Props
 import Control.Alt (($>))
 import Control.Applicative (pure)
@@ -28,6 +28,12 @@ emptyChangePasswordDataForm = { username: "", oldPassword: "", password: "", ver
 changePasswordView :: Credentials -> Widget HTML String
 changePasswordView currentCredentials = div [Props._id "changePasswordArea"] [form [] [
   h1 [] [text "Change passphrase"]
+, div [Props.className "description"] [
+    p [] [
+      strong [] [text "Warning"]
+    , text ": changing password will delete the PIN on the current device and will cause all PIN set for this account on other devices to stop working."
+    ]  
+  ]
 , do
     signalResult <- demand $ do
       formValues :: ChangePasswordDataForm <- loopS emptyChangePasswordDataForm $ \{username, oldPassword, password, verifyPassword, notRecoverable} -> do
@@ -46,7 +52,7 @@ changePasswordView currentCredentials = div [Props._id "changePasswordArea"] [fo
                                                                 , Props.checked v
                                                                 , Props.onChange
                                                                 ] $> (not v)
-                                                              ])       
+                                                              ])   
         pure { username: username', oldPassword: oldPassword', password: password', verifyPassword:verifyPassword', notRecoverable: checkbox' }
       result :: Maybe String <- fireOnce (submitWidget formValues)
       pure result

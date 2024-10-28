@@ -77,14 +77,14 @@ userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenu
         , subMenuElement ChangePassword (Enabled enabled) "Passphrase"
         , subMenuElement Delete         (Enabled enabled) "Delete account"
         ]
-      , subMenu Data    "Data"    [
-          subMenuElement Import         (Enabled enabled) "Import"
-        , subMenuElement Export         (Enabled enabled) "Export"
-        ]
       , subMenu Device  "Device" [
           subMenuElement Pin            (Enabled true   ) "Device PIN"
         , subMenuElement DeviceSync     (Enabled true   ) "Device Sync" 
       ]
+      , subMenu Data    "Data"    [
+          subMenuElement Import         (Enabled enabled) "Import"
+        , subMenuElement Export         (Enabled enabled) "Export"
+        ]
       , subMenuElement   Donate         (Enabled true)     "Donate" <#> OpenUserAreaPage
       , li' [a      [Props.className "link", Props.href "/about/app", Props.target "_blank"] [span [] [text "About"]]]
       , li' [button [Props.onClick, Props._id "lockButton"]                                  [span [] [text "Lock"]]]   $> LockEvent

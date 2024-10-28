@@ -2,8 +2,6 @@ module Functions.Handler.LoginPageEventHandler where
 
 import Concur.Core (Widget)
 import Concur.React (HTML, affAction)
-import Control.Alt ((<|>))
-import Control.Alternative ((*>))
 import Control.Applicative (pure)
 import Control.Bind (bind, discard, (=<<), (>>=))
 import Control.Category ((<<<))
@@ -23,7 +21,7 @@ import Data.Unit (unit)
 import DataModel.AppError (AppError(..), InvalidStateError(..))
 import DataModel.AppState (AppState)
 import DataModel.Communication.ProtocolError (ProtocolError(..))
-import DataModel.Credentials (Credentials, emptyCredentials)
+import DataModel.Credentials (Credentials)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy)
 import DataModel.WidgetState (CardFormInput(..), CardViewState(..), LoginType(..), Page(..), WidgetState(..))
@@ -34,8 +32,8 @@ import Functions.Communication.Users (extractUserInfoReference, getUserInfo)
 import Functions.DeviceSync (computeSyncOperations, getSyncOptionFromLocalStorage)
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
 import Functions.EncodeDecode (importCryptoKeyAesGCM)
-import Functions.Events (blur, effectDelayed, focus)
-import Functions.Handler.GenericHandlerFunctions (OperationState, defaultView, handleOperationResult, noOperation, runStep, runWidgetStep)
+import Functions.Events (effectDelayed, focus)
+import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Index (getIndex)
 import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, makeKey)
 import Functions.SRP (checkM2)
@@ -76,11 +74,12 @@ handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmen
     pure res
   
   # runExceptT
-  >>= handlePinResult state initialPage Black
-  >>= (\(Tuple page either) -> handleOperationResult state page true Black either)
+  >>= handlePinResult       state initialPage      Black
+  >>= handleOperationResult state emptyPage   true Black
 
   where
     initialPage = Login emptyLoginFormData {pin = pin, loginType = PinLogin}
+    emptyPage   = Login emptyLoginFormData {loginType = PinLogin}
 
 handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login loginFormData)                                                           proxyInfo))
 
@@ -98,9 +97,9 @@ loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyI
   ProxyResponse proxy'   loginStep1Result <- runStep (loginStep1         connectionState                 prepareLoginResult.c                                      ) (WidgetState {status: Spinner, color: Black, message: "SRP step 1"   } page proxyInfo)
   ProxyResponse proxy''  loginStep2Result <- runStep (loginStep2         connectionState{proxy = proxy'} prepareLoginResult.c prepareLoginResult.p loginStep1Result) (WidgetState {status: Spinner, color: Black, message: "SRP step 2"   } page proxyInfo)
   _                                       <- runStep ((liftAff $ checkM2 srpConf loginStep1Result.aa loginStep2Result.m1 loginStep2Result.kk (toArrayBuffer loginStep2Result.m2)) >>= (\result -> 
-                                                      if result
-                                                      then pure         unit
-                                                      else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
+                                                        if result
+                                                        then pure         unit
+                                                        else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
                                                      ))                                                                                                              (WidgetState {status: Spinner, color: Black, message: "Validate user"} page proxyInfo)
   userInfoReferences                      <- runStep ( extractUserInfoReference loginStep2Result.masterKey 
                                                        =<< 
@@ -159,29 +158,24 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
 loadHomePageSteps _ _ _ _  = do
   throwError (InvalidStateError $ CorruptedState "")
 
-type MaxPinAttemptsReached = Boolean
-
-handlePinResult :: AppState -> Page -> OverlayColor -> Either AppError OperationState -> Widget HTML (Tuple Page (Either AppError OperationState))
-handlePinResult state@{proxy} page color either = do
+handlePinResult :: AppState -> Page -> OverlayColor -> Either AppError OperationState -> Widget HTML (Either AppError OperationState)
+handlePinResult {proxy} page color either = do
   let proxyInfo       = getProxyInfoFromProxy proxy
  
   storage <- liftEffect $ window >>= localStorage
-  newPage <- case either of
-    Right _ -> ( do
+  
+  case either of
+    Right _ -> do
         liftEffect $ setItem (makeKey "failures") (show 0) storage
-        pure $ page 
-      ) <|> (defaultView (WidgetState {status: Spinner, color, message: "Reset PIN attempts"} page proxyInfo))
-    Left  _ -> ( do
+        delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) page proxyInfo
+        pure either
+    Left  _ -> do
         failures <- liftEffect $ getItem (makeKey "failures") storage
-        let count = (((fromMaybe 0) <<< fromString <<< (fromMaybe "")) failures) + 1
+        let count = ((fromMaybe 0 <<< fromString <<< fromMaybe "") failures) + 1
         if count < 3 then do
           liftEffect $ setItem (makeKey "failures") (show count) storage
-          pure $ Login $ emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = PinLogin}
+          effectDelayed 510.0 (focus "loginPINInput" # liftEffect) # affAction
+          pure either
         else do
           liftEffect $ deleteCredentials storage
-          pure $ Login $ emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = CredentialLogin}
-      ) <|> (defaultView (WidgetState {status: Spinner, color, message: "Compute PIN attempts"} page proxyInfo))
-
-  _ <- effectDelayed 510.0 (blur "loginUsernameInput" # liftEffect) *> (focus "mainView" # liftEffect) # affAction
-
-  pure $ Tuple newPage either
+          pure $ (Left (ProtocolError MaxPinAttemptsReachedError))

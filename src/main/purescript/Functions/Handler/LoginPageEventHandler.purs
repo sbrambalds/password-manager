@@ -166,14 +166,14 @@ handlePinResult {proxy} page color either = do
   
   case either of
     Right _ -> do
-        liftEffect $ setItem (makeKey "failures") (show 0) storage
+        liftEffect $ setItem (makeKey "failureCount") (show 0) storage
         delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) page proxyInfo
         pure either
     Left  _ -> do
-        failures <- liftEffect $ getItem (makeKey "failures") storage
+        failures <- liftEffect $ getItem (makeKey "failureCount") storage
         let count = ((fromMaybe 0 <<< fromString <<< fromMaybe "") failures) + 1
         if count < 3 then do
-          liftEffect $ setItem (makeKey "failures") (show count) storage
+          liftEffect $ setItem (makeKey "failureCount") (show count) storage
           effectDelayed 510.0 (focus "loginPINInput" # liftEffect) # affAction
           pure either
         else do

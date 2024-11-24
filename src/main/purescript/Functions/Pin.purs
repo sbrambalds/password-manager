@@ -39,7 +39,7 @@ import Web.HTML.Window (localStorage)
 import Web.Storage.Storage (Storage, getItem, removeItem, setItem)
 
 makeKey :: String -> String
-makeKey = (<>) "clipperz.is."
+makeKey = (<>) "clipperz.epsilon.pin."
 
 isPinValid :: PIN -> Boolean
 isPinValid p = (length p) == 5
@@ -52,7 +52,7 @@ generateKeyFromPin hashf pin = do
 decryptPassphraseWithPin :: HashFunction -> PIN -> ExceptT AppError Aff Credentials
 decryptPassphraseWithPin hashFunc pin = do  
   storage              <- liftEffect $ window >>= localStorage
-  username             <- ExceptT $ getItem (makeKey "user") storage       <#> note (InvalidStateError (CorruptedSavedPassphrase "user not found in local storage"))       # liftEffect
+  username             <- ExceptT $ getItem (makeKey "username") storage       <#> note (InvalidStateError (CorruptedSavedPassphrase "user not found in local storage"))       # liftEffect
   pinEncryptedPassword <- ExceptT $ getItem (makeKey "passphrase") storage <#> note (InvalidStateError (CorruptedSavedPassphrase "passphrase not found in local storage")) # liftEffect
   key <- liftAff $ generateKeyFromPin hashFunc pin
   { padding, passphrase } :: PasswordPin <- decryptJson passwordPinCodec key (toArrayBuffer $ hex pinEncryptedPassword) # ExceptT # withExceptT (ProtocolError <<< CryptoError <<< show)
@@ -63,7 +63,7 @@ deleteCredentials :: Storage -> Effect Unit
 deleteCredentials storage = do
   removeItem (makeKey "user")       storage
   removeItem (makeKey "passphrase") storage
-  removeItem (makeKey "failures")   storage
+  removeItem (makeKey "failureCount")   storage
 
 encryptedPassphraseByteLength :: Int
 encryptedPassphraseByteLength = 1024
@@ -81,9 +81,9 @@ saveCredentials {username: Just u, password: Just p, hash: hashf} pin storage = 
   let obj = { padding: paddingBytesLength, passphrase: toString Hex paddedPassphrase }
 
   encryptedCredentials <- encryptJson passwordPinCodec key obj <#> fromArrayBuffer # liftAff
-  liftEffect $ setItem (makeKey "user")        u                                  storage
+  liftEffect $ setItem (makeKey "username")        u                                  storage
   liftEffect $ setItem (makeKey "passphrase") (toString Hex encryptedCredentials) storage
-  liftEffect $ setItem (makeKey "failures")   (show 0)                            storage
+  liftEffect $ setItem (makeKey "failureCount")   (show 0)                            storage
 
   pure encryptedCredentials
 saveCredentials _ _ _ = throwError (InvalidStateError (MissingValue "Missing username or password from state"))
@@ -92,5 +92,5 @@ pinExists :: Effect Boolean
 pinExists = do
   storage <- localStorage =<< window
   maybePassphrase <- (getItem (makeKey "passphrase") storage)
-  maybeUsername   <- (getItem (makeKey "user")       storage)
+  maybeUsername   <- (getItem (makeKey "username")       storage)
   pure $ isJust (maybePassphrase *> maybeUsername)

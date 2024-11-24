@@ -2,7 +2,7 @@ module Views.CreateCardView where
 
 import Concur.Core (Widget)
 import Concur.React (HTML)
-import Concur.React.DOM (button, datalist, div, form, input, label, li, option, span, text, textarea, ul)
+import Concur.React.DOM (button, datalist, div, form, h4, input, label, li, option, span, text, textarea, ul)
 import Concur.React.Props as Props
 import Control.Alt (($>), (<#>), (<|>))
 import Control.Applicative (pure)
@@ -175,19 +175,26 @@ createCardView cardFormData@{card} originalCard allTags passwordGeneratorSetting
       
     notesSignal :: Boolean -> String -> Widget HTML (Tuple String Boolean)
     notesSignal preview notes = do
-      button [(Tuple notes (not preview)) <$ Props.onClick, Props.className "preview"] [text if preview then "Edit" else "Preview Markdown"]
+      div [Props.className "preview"] [
+        h4 [] [text "Notes"]
+      , if (null notes) then empty else (label [] [
+          span [] [text "Preview Markdown"]
+        , input [
+            Props._type "checkbox"
+          , Props.checked preview
+          , Props.onChange $> (Tuple notes (not preview))
+          ]
+        ])
+      ]
       <>
-      (if preview 
-      then
-        div [Props.className "card_notes"] [
-          div [Props.className "markdown-body", Props.dangerouslySetInnerHTML { __html: unsafePerformEffect $ renderString notes}] []
-        ]
-      else
-        (\e -> (Tuple (Props.unsafeTargetValue e) preview)) <$> label [Props.className "notes"] [
-          span [Props.className "label"] [text "Notes"]
-        , dynamicWrapper Nothing notes $ textarea [Props.rows 1, Props.value notes, Props.onChange, Props.placeholder "notes"] []
-        ]
-      )
+      div [Props.classList [Just "card_notes", if preview then Just "markdown" else Nothing]] [
+        if preview 
+        then  div [Props.className "markdown-body", Props.dangerouslySetInnerHTML { __html: unsafePerformEffect $ renderString notes}] []
+        else  label [Props.className "notes"] [
+                span [Props.className "label"] [text "Notes"]
+              , dynamicWrapper Nothing notes $ textarea [Props.rows 1, Props.value notes, Props.onChange, Props.placeholder "notes"] []
+              ] <#> (\e -> (Tuple (Props.unsafeTargetValue e) preview))
+      ]
 
     formSignal :: PasswordGeneratorSettings -> Widget HTML (Either CardFormData (Maybe Card))
     formSignal settings =

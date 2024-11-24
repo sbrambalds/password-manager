@@ -3,10 +3,10 @@ module OperationalWidgets.App ( app ) where
 import Concur.Core (Widget)
 import Concur.React (HTML, affAction)
 import Control.Alt ((<|>))
-import Control.Alternative (empty, pure, (*>))
+import Control.Alternative (empty, pure, (*>), (<*))
 import Control.Bind (bind, (=<<), (>>=))
 import Data.Eq ((==))
-import Data.Function (($))
+import Data.Function ((#), ($))
 import Data.Tuple (Tuple(..))
 import DataModel.AppState (AppState)
 import DataModel.FragmentState as Fragment
@@ -21,6 +21,7 @@ import Functions.Handler.LoginPageEventHandler (handleLoginPageEvent)
 import Functions.Handler.SignupPageEventHandler (getLoginFormData, handleSignupPageEvent)
 import Functions.Handler.UserAreaEventHandler (handleUserAreaEvent)
 import Functions.State (getProxyInfoFromProxy, updateProxy)
+import Functions.Timer (resetTimer)
 import Views.AppView (PageEvent(..), appView)
 import Views.LoginFormView (LoginPageEvent(..))
 import Views.OverlayView (hiddenOverlayInfo)
@@ -44,7 +45,7 @@ app appState@{proxy} fragmentState = case fragmentState of
     appLoop (Tuple state widgetState@(WidgetState overlayInfo page proxyInfo')) = do
       ( ( do
           resultEvent <- appView widgetState
-          executeOperation resultEvent state proxyInfo' fragmentState
+          (executeOperation resultEvent state proxyInfo' fragmentState) <* (resetTimer # liftEffect)
         )
         <|>
         ( if (proxyInfo' == Static)

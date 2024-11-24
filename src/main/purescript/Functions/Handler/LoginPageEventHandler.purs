@@ -1,13 +1,11 @@
 module Functions.Handler.LoginPageEventHandler where
 
-import Concur.Core (Widget, liftWidget)
+import Concur.Core (Widget)
 import Concur.React (HTML, affAction)
-import Control.Alt (void, ($>), (<|>))
-import Control.Alternative ((*>))
 import Control.Applicative (pure)
 import Control.Bind (bind, discard, (=<<), (>>=))
 import Control.Category ((<<<))
-import Control.Monad.Except (ExceptT(..), throwError)
+import Control.Monad.Except (throwError)
 import Control.Monad.Except.Trans (ExceptT, runExceptT)
 import Data.CommutativeRing ((+))
 import Data.Either (Either(..))
@@ -18,27 +16,24 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.Ord ((<))
 import Data.Show (show)
-import Data.Time (Millisecond)
 import Data.Tuple (Tuple(..))
 import Data.Unit (unit)
 import DataModel.AppError (AppError(..), InvalidStateError(..))
 import DataModel.AppState (AppState)
 import DataModel.Communication.ProtocolError (ProtocolError(..))
-import DataModel.Credentials (Credentials, emptyCredentials)
+import DataModel.Credentials (Credentials)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy)
 import DataModel.WidgetState (CardFormInput(..), CardViewState(..), LoginType(..), Page(..), WidgetState(..))
-import Effect.Aff (Milliseconds(..), delay, forkAff)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
-import Effect.Console (log)
 import Functions.Communication.Login (PrepareLoginResult, loginStep1, loginStep2, prepareLogin)
 import Functions.Communication.Users (extractUserInfoReference, getUserInfo)
 import Functions.DeviceSync (computeSyncOperations, getSyncOptionFromLocalStorage)
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
 import Functions.EncodeDecode (importCryptoKeyAesGCM)
-import Functions.Events (blur, focus)
-import Functions.Handler.GenericHandlerFunctions (OperationState, defaultView, handleOperationResult, noOperation, runStep, runWidgetStep)
+import Functions.Events (effectDelayed, focus)
+import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Index (getIndex)
 import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, makeKey)
 import Functions.SRP (checkM2)
@@ -71,19 +66,20 @@ handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
     initialPage = (Login emptyLoginFormData {credentials = cred})
 
 
-handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf, username, pinEncryptedPassword} proxyInfo fragmentState = do
+handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState = do
   do
-    cred               <- runStep (decryptPassphraseWithPin hash pin username pinEncryptedPassword) (WidgetState (spinnerOverlay "Decrypt with PIN" Black) initialPage proxyInfo)
-    prepareLoginResult <- runStep (prepareLogin srpConf cred)                                       (WidgetState (spinnerOverlay "Prepare login"    Black) initialPage proxyInfo)
+    cred               <- runStep (decryptPassphraseWithPin hash pin) (WidgetState (spinnerOverlay "Decrypt with PIN" Black) initialPage proxyInfo)
+    prepareLoginResult <- runStep (prepareLogin srpConf cred)         (WidgetState (spinnerOverlay "Prepare login"    Black) initialPage proxyInfo)
     res                <- loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
     pure res
   
   # runExceptT
-  >>= handlePinResult state initialPage Black
-  >>= (\(Tuple page either) -> handleOperationResult state page true Black either)
+  >>= handlePinResult       state initialPage      Black
+  >>= handleOperationResult state emptyPage   true Black
 
   where
     initialPage = Login emptyLoginFormData {pin = pin, loginType = PinLogin}
+    emptyPage   = Login emptyLoginFormData {loginType = PinLogin}
 
 handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login loginFormData)                                                           proxyInfo))
 
@@ -101,9 +97,9 @@ loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyI
   ProxyResponse proxy'   loginStep1Result <- runStep (loginStep1         connectionState                 prepareLoginResult.c                                      ) (WidgetState {status: Spinner, color: Black, message: "SRP step 1"   } page proxyInfo)
   ProxyResponse proxy''  loginStep2Result <- runStep (loginStep2         connectionState{proxy = proxy'} prepareLoginResult.c prepareLoginResult.p loginStep1Result) (WidgetState {status: Spinner, color: Black, message: "SRP step 2"   } page proxyInfo)
   _                                       <- runStep ((liftAff $ checkM2 srpConf loginStep1Result.aa loginStep2Result.m1 loginStep2Result.kk (toArrayBuffer loginStep2Result.m2)) >>= (\result -> 
-                                                      if result
-                                                      then pure         unit
-                                                      else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
+                                                        if result
+                                                        then pure         unit
+                                                        else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
                                                      ))                                                                                                              (WidgetState {status: Spinner, color: Black, message: "Validate user"} page proxyInfo)
   userInfoReferences                      <- runStep ( extractUserInfoReference loginStep2Result.masterKey 
                                                        =<< 
@@ -130,6 +126,7 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
   ProxyResponse proxy'  userInfo <- runStep       (getUserInfo connectionState                                userInfoReferences (masterKeyEncodingVersion)) (WidgetState {status: Spinner, color: Black, message: "Get user info"      } page proxyInfo)
   ProxyResponse proxy'' index    <- runStep       (getIndex    connectionState{ proxy = proxy'} (unwrap userInfo).indexReference                           ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)
   donationLevel                  <- runStep       (computeDonationLevel index userInfo # liftEffect                                                        ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)                                                     
+  
   case (unwrap (unwrap userInfo).userPreferences).automaticLock of
     Right n -> liftEffect (activateTimer n)
     Left  _ -> pure unit
@@ -147,7 +144,7 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
 
   proxy''' <- runStep (updateProxy updatedState # liftEffect) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
   
-  focus "indexView" # liftEffect
+  focus "mainView" # liftEffect
   pure $ Tuple
     updatedState { proxy = proxy'''}
     (WidgetState 
@@ -161,29 +158,24 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
 loadHomePageSteps _ _ _ _  = do
   throwError (InvalidStateError $ CorruptedState "")
 
-type MaxPinAttemptsReached = Boolean
-
-handlePinResult :: AppState -> Page -> OverlayColor -> Either AppError OperationState -> Widget HTML (Tuple Page (Either AppError OperationState))
-handlePinResult state@{proxy} page color either = do
+handlePinResult :: AppState -> Page -> OverlayColor -> Either AppError OperationState -> Widget HTML (Either AppError OperationState)
+handlePinResult {proxy} page color either = do
   let proxyInfo       = getProxyInfoFromProxy proxy
  
   storage <- liftEffect $ window >>= localStorage
-  newPage <- case either of
-    Right _ -> ( do
+  
+  case either of
+    Right _ -> do
         liftEffect $ setItem (makeKey "failures") (show 0) storage
-        pure $ page 
-      ) <|> (defaultView (WidgetState {status: Spinner, color, message: "Reset PIN attempts"} page proxyInfo))
-    Left  _ -> ( do
+        delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) page proxyInfo
+        pure either
+    Left  _ -> do
         failures <- liftEffect $ getItem (makeKey "failures") storage
-        let count = (((fromMaybe 0) <<< fromString <<< (fromMaybe "")) failures) + 1
+        let count = ((fromMaybe 0 <<< fromString <<< fromMaybe "") failures) + 1
         if count < 3 then do
           liftEffect $ setItem (makeKey "failures") (show count) storage
-          pure $ Login $ emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = PinLogin}
+          effectDelayed 510.0 (focus "loginPINInput" # liftEffect) # affAction
+          pure either
         else do
           liftEffect $ deleteCredentials storage
-          pure $ Login $ emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = CredentialLogin}
-      ) <|> (defaultView (WidgetState {status: Spinner, color, message: "Compute PIN attempts"} page proxyInfo))
-
-  _ <- forkAff ((delay (Milliseconds 510.0)) *> (blur "loginUsernameInput" # liftEffect) *> (focus "indexView" # liftEffect)) # affAction
-
-  pure $ Tuple newPage either
+          pure $ (Left (ProtocolError MaxPinAttemptsReachedError))

@@ -2,16 +2,9 @@
 
 var handle = null;
 var timeoutTime = 0;
-const resetEvents = ["click", "keydown"]
-const listener = _ => resetTimer(timeoutTime)
-
-function resetTimer(time) { clearTimeout(handle); handle = setTimer(time)}
 
 function setTimer(time) {
     return setTimeout(ev => {
-        resetEvents.forEach(element => {
-            document.removeEventListener(element, listener)
-        });
         document.getElementById("lockButton").dispatchEvent(new MouseEvent("click", {
             bubbles: true,
             cancelable: true,
@@ -20,28 +13,31 @@ function setTimer(time) {
     }, time * 60000)
 }
 
+function resetTimer() { 
+	if (handle != null && timeoutTime > 0) {
+		clearTimeout(handle);
+		handle = setTimer(timeoutTime);
+	}
+	return;
+}
+
 const activateTimer = function(time) {
     return function() {
-        // console.log("activate timer of " + time + " minutes")
-        timeoutTime = time
-        resetEvents.forEach(element => {
-            document.addEventListener(element, listener)
-        });
+        timeoutTime = time;
         handle = setTimer(time)
         return;
     }
 }
 
 const stopTimer = function() {
-    // console.log("stop lock timer")
-    resetEvents.forEach(element => {
-        document.removeEventListener(element, listener)
-    });
     clearTimeout(handle);
+	timeoutTime = 0;
+	handle = null;
     return;
 }
 
 export {
     activateTimer,
+	resetTimer,
     stopTimer
 }

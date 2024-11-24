@@ -5,11 +5,11 @@ module Functions.Handler.UserAreaEventHandler
 
 import Affjax.ResponseFormat as RF
 import Concur.Core (Widget)
-import Concur.React (HTML)
+import Concur.React (HTML, affAction)
 import Control.Alt (map, ($>), (<#>), (<$>))
-import Control.Alternative ((*>))
+import Control.Alternative ((*>), (<*))
 import Control.Applicative (pure)
-import Control.Bind (bind, discard, (>>=))
+import Control.Bind (bind, discard, (=<<), (>>=))
 import Control.Category (identity, (<<<))
 import Control.Monad.Except (ExceptT(..))
 import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
@@ -18,6 +18,7 @@ import Data.Array (filter, foldM, length, snoc)
 import Data.Codec.Argonaut (encode)
 import Data.Codec.Argonaut as CA
 import Data.Either (Either(..), isRight)
+import Data.Eq ((==))
 import Data.FoldableWithIndex (foldWithIndexM)
 import Data.Function (flip, (#), ($))
 import Data.HTTP.Method (Method(..))
@@ -26,7 +27,7 @@ import Data.HeytingAlgebra (not)
 import Data.Lens (view)
 import Data.List (List(..), fromFoldable, (:))
 import Data.List as List
-import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid ((<>))
 import Data.Newtype (unwrap)
 import Data.Show (show)
@@ -43,7 +44,7 @@ import DataModel.FragmentState as Fragment
 import DataModel.IndexVersions.Index (CardEntry(..), CardReference(..), Index(..), _card_reference, _index_identifier, addToIndex)
 import DataModel.Proxy (DataOnLocalStorage(..), DynamicProxy(..), Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy, discardResult)
 import DataModel.UserVersions.User (IndexReference(..), UserInfo(..), _index_reference, _userInfo_identifier, _userInfo_reference)
-import DataModel.WidgetState (CardManagerState, CardViewState(..), ImportStep(..), LoginType(..), Page(..), UserAreaPage(..), UserAreaState, WidgetState(..), MainPageWidgetState)
+import DataModel.WidgetState (CardManagerState, CardViewState(..), ImportStep(..), LoginType(..), MainPageWidgetState, Page(..), UserAreaPage(..), UserAreaState, WidgetState(..))
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Card (addTag)
@@ -52,13 +53,13 @@ import Functions.Communication.Blobs (deleteBlob, getBlob)
 import Functions.Communication.Cards (deleteCard, getCard, postCard)
 import Functions.Communication.Users (asMaybe, computeRemoteUserCard, deleteUserCard, deleteUserInfo, updateUserPreferences)
 import Functions.DeviceSync (computeDeleteOperations, computeSyncOperations, updateSyncPreference)
-import Functions.Events (focus)
+import Functions.Events (eventDelayed, focus)
 import Functions.Export (BlobsList, appendCardsDataInPlace, getBasicHTML, prepareUnencryptedExport, prepareHTMLBlob)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Import (ImportVersion(..), decodeImport, parseImport, readFile)
 import Functions.Index (updateIndex)
-import Functions.Pin (deleteCredentials, makeKey, saveCredentials)
+import Functions.Pin (deleteCredentials, makeKey, pinExists, saveCredentials)
 import Functions.State (resetState)
 import Functions.Time (formatDateTimeToDate, getCurrentDateTime)
 import Functions.Timer (activateTimer, stopTimer)
@@ -67,7 +68,7 @@ import OperationalWidgets.Sync (SyncOperation(..), addPendingOperation, updateCo
 import Record (merge)
 import Views.DonationViews as DonationEvent
 import Views.ExportView (ExportEvent(..))
-import Views.LoginFormView (emptyLoginFormData)
+import Views.LoginFormView (Username, emptyLoginFormData)
 import Views.OverlayView (OverlayColor(..), OverlayStatus(..), hiddenOverlayInfo, spinnerOverlay)
 import Views.SetPinView (PinEvent(..))
 import Views.UserAreaView (UserAreaEvent(..), userAreaInitialState)
@@ -79,11 +80,11 @@ import Web.Storage.Storage (getItem)
 handleUserAreaEvent :: UserAreaEvent -> CardManagerState -> UserAreaState -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 
 
-handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, srpConf, hash: hashFunc, cardsCache, username: Just username, password: Just password, index: Just index, userInfo: Just userInfo@(UserInfo {indexReference: IndexReference { reference: indexRef}, userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, c: Just c, p: Just p, s: Just s, masterKey: Just masterKey, pinEncryptedPassword, enableSync, donationLevel: Just donationLevel, syncDataWire} proxyInfo f = do
+handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, srpConf, hash: hashFunc, cardsCache, username: Just username, password: Just password, index: Just index, userInfo: Just userInfo@(UserInfo {indexReference: IndexReference { reference: indexRef}, userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, c: Just c, p: Just p, s: Just s, masterKey: Just masterKey, pinExists, enableSync, donationLevel: Just donationLevel, syncDataWire} proxyInfo f = do
   let defaultPage = { index
                     , credentials:      {username, password}
                     , donationInfo
-                    , pinExists:        isJust pinEncryptedPassword
+                    , pinExists
                     , enableSync
                     , userPreferences
                     , userAreaState
@@ -94,7 +95,7 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
 
   case userAreaEvent of
     (CloseUserAreaEvent) -> 
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *> 
       noOperation (Tuple 
                   state
@@ -165,8 +166,17 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
                                          *> (updateSyncPreference userUpdateInfo.c enableSync # liftEffect)
                                         )                                                   (WidgetState (spinnerOverlay "Update sync preferences" White) page proxyInfo)
 
+        _              <- runStep (liftEffect $ deleteCredentials =<< localStorage
+                                                                  =<< window)               (WidgetState (spinnerOverlay "Reset PIN" White) page proxyInfo)
+
         pure (Tuple 
-          (state {proxy = proxy', c = Just userUpdateInfo.c, p = Just userUpdateInfo.p, s = Just userUpdateInfo.s, masterKey = Just userUpdateInfo.masterKey, password = Just newPassword})
+          (state { proxy = proxy'
+                 , c = Just userUpdateInfo.c, p = Just userUpdateInfo.p, s = Just userUpdateInfo.s
+                 , masterKey = Just userUpdateInfo.masterKey
+                 , password = Just newPassword
+                 , pinExists = false
+                 }
+          )
           (WidgetState hiddenOverlayInfo page proxyInfo)
         )
 
@@ -174,13 +184,13 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
       >>= handleOperationResult state errorPage true White
     
     (SetPinEvent pinAction) ->
-      let page = Main defaultPage { pinExists = case pinAction of
-                                                  Reset    -> false
-                                                  SetPin _ -> true
-                                  }
+      let pinExists' = case pinAction of
+                        Reset    -> false
+                        SetPin _ -> true
+          page = Main defaultPage {pinExists = pinExists'}
       in do
         storage               <- liftEffect $ window >>= localStorage
-        pinEncryptedPassword' <- runStep (case pinAction of
+        _                     <- runStep (case pinAction of
                                           Reset      -> (liftEffect $ deleteCredentials storage)  $> Nothing
                                           SetPin pin -> (saveCredentials state pin storage)      <#> Just
                                         ) (WidgetState
@@ -192,7 +202,7 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
                                             proxyInfo
                                           )
         pure (Tuple 
-                (state {pinEncryptedPassword = pinEncryptedPassword'})
+                (state {pinExists = pinExists'})
                 (WidgetState
                   hiddenOverlayInfo
                   page
@@ -379,18 +389,18 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
     (LockEvent) ->
       let page = Main defaultPage
       in
-        logoutSteps state "Lock" page proxyInfo
+        (logoutSteps state Lock page proxyInfo
         # runExceptT
-        >>= handleOperationResult state defaultErrorPage true White
+        >>= handleOperationResult state defaultErrorPage true White)
+        <* (eventDelayed (focus "loginPassphraseInput" *> focus "loginPINInput") # affAction)
   
     (LogoutEvent) ->
       let page = Main defaultPage
       in 
-        do
-          username_ <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "user")) (WidgetState (spinnerOverlay "Logout" White) page proxyInfo)
-          logoutSteps (state {username = username_}) "Logout" page proxyInfo
+        (logoutSteps state Logout page proxyInfo
         # runExceptT
-        >>= handleOperationResult state defaultErrorPage true White
+        >>= handleOperationResult state defaultErrorPage true White)
+        <* (eventDelayed (focus "loginUsernameInput" *> focus "loginPINInput") # affAction)
 
   where
     updateUserAreaState :: MainPageWidgetState -> UserAreaState -> Widget HTML OperationState
@@ -430,9 +440,21 @@ downloadBlobsSteps referenceList connectionState page proxyInfo =
   where
     nToDownload = List.length referenceList
 
-logoutSteps :: AppState -> String -> Page -> ProxyInfo -> ExceptT AppError (Widget HTML) OperationState
-logoutSteps state@{username, hash: hashFunc, proxy, srpConf} message page proxyInfo =
+data LogoutType = Lock | Logout
+
+logoutTypeMessage :: LogoutType -> String
+logoutTypeMessage Lock   = "Lock"
+logoutTypeMessage Logout = "Logout"
+
+logoutTypeUserame :: Maybe Username -> LogoutType -> Username
+logoutTypeUserame username = case _ of
+  Lock   -> fromMaybe "" username
+  Logout ->           ""
+
+logoutSteps :: AppState -> LogoutType -> Page -> ProxyInfo -> ExceptT AppError (Widget HTML) OperationState
+logoutSteps state@{username, hash: hashFunc, proxy, srpConf} logoutType page proxyInfo =
   do
+    let message = logoutTypeMessage logoutType
     proxy' <- case proxy of
       DynamicProxy (OfflineProxy _ _) -> pure $ DynamicProxy $ OfflineProxy Nothing NoData
       _ -> do 
@@ -440,18 +462,31 @@ logoutSteps state@{username, hash: hashFunc, proxy, srpConf} message page proxyI
         _ <- runStep (genericRequest connectionState "logout" POST Nothing RF.ignore) (WidgetState (spinnerOverlay message White) page proxyInfo)
         pure $ DynamicProxy defaultOnlineProxy
 
-    passphrase <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "passphrase")) (WidgetState (spinnerOverlay message White) page proxyInfo)
-    
+    stopTimer # liftEffect
+
+    localStorageUsername <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "user"))       (WidgetState (spinnerOverlay message White) page proxyInfo)    
+    pinExists            <- pinExists # liftEffect
+
     pure $ Tuple 
-            ((resetState state) {username = username, pinEncryptedPassword = hex <$> passphrase, proxy = proxy'})
+            ((resetState state) {pinExists =pinExists , proxy = proxy'})
             (WidgetState
               hiddenOverlayInfo
-              (Login emptyLoginFormData { credentials = emptyCredentials {username = fromMaybe "" username}
-                                        , loginType   = if isNothing passphrase then CredentialLogin else PinLogin
+              (Login emptyLoginFormData { credentials = emptyCredentials {username = logoutTypeUserame username logoutType}
+                                        , loginType   = loginType localStorageUsername pinExists
                                         }
               )
               proxyInfo
             ) 
+  where
+    loginType :: Maybe String -> Boolean -> LoginType
+    loginType localStorageUsername pinExists =
+      if pinExists
+      then
+        case logoutType of
+          Lock   -> if (localStorageUsername == username) then PinLogin else CredentialLogin
+          Logout -> PinLogin
+      else CredentialLogin
+
 
 deleteCardsSteps :: ConnectionState -> CardsCache -> Index -> Page -> ProxyInfo -> ExceptT AppError (Widget HTML) (ProxyResponse Unit)
 deleteCardsSteps connectionState cardsCache (Index {entries}) page proxyInfo =

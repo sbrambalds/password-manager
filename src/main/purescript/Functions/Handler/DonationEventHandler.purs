@@ -14,7 +14,7 @@ import Data.Function ((#), ($))
 import Data.HeytingAlgebra (not)
 import Data.Lens (view)
 import Data.List (List(..), (:))
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..), fst)
 import DataModel.AppError (AppError(..), InvalidStateError(..))
@@ -40,11 +40,11 @@ import Views.UserAreaView (userAreaInitialState)
 
 handleDonationPageEvent :: DonationPageEvent -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 
-handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s, srpConf, username: Just username, password: Just password, index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, pinEncryptedPassword, enableSync, syncDataWire, donationLevel: Just donationLevel} proxyInfo fragmentState = do
+handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s, srpConf, username: Just username, password: Just password, index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} proxyInfo fragmentState = do
   let defaultPage = { index
                     , credentials:      {username, password}
                     , donationInfo
-                    , pinExists:        isJust pinEncryptedPassword
+                    , pinExists
                     , enableSync
                     , userPreferences
                     , userAreaState:    userAreaInitialState
@@ -80,7 +80,7 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s
         let cardViewState = case fragmentState of
                         Fragment.AddCard card -> CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)
                         _                     -> NoCard
-        focus "indexView" # liftEffect
+        focus "mainView" # liftEffect
         pure $ Tuple 
           (merge (asMaybe stateUpdate) state {proxy = proxy, donationLevel = Just newDonationLevel})
           (WidgetState 
@@ -96,7 +96,7 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, s: Just s
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
 
-    CloseDonationPage -> (focus "indexView" # liftEffect) *> noOperation (Tuple state $ WidgetState hiddenOverlayInfo (Main defaultPage) proxyInfo)
+    CloseDonationPage -> (focus "mainView" # liftEffect) *> noOperation (Tuple state $ WidgetState hiddenOverlayInfo (Main defaultPage) proxyInfo)
 
 handleDonationPageEvent _ state _ _ = do
   throwError $ InvalidStateError (CorruptedState "DonationPage")

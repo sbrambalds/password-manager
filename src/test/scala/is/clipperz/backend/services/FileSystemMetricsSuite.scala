@@ -4,19 +4,17 @@ import zio.test.ZIOSpecDefault
 import zio.Scope
 import zio.test.Spec
 import zio.test.{ ZIOSpecDefault, assertTrue, assert, assertCompletes, assertZIO, TestAspect }
-// import java.nio.file.FileSystems
 import zio.nio.file.{ FileSystem }
+import zio.ZIO
 
 import is.clipperz.backend.middleware.collectFileSystemMetrics
-// import java.nio.file.Files
-import zio.ZIO
 
 object FileSystemMetricsSuite extends ZIOSpecDefault:
 
   def spec = suite("FileSystemMetrics")(
     test("countFileNumber - folder with one file") {
       for {
-        result <- collectFileSystemMetrics(FileSystem.default.getPath("./src/test/resources/blobs"))
+        result <- collectFileSystemMetrics(FileSystem.default.getPath("./src/test/resources/sizeTest/singleFile"))
       } yield assertTrue(result._1 == 1, result._2 == 1018269)
     } + 
     test("countFileNumber - single nested folders") {

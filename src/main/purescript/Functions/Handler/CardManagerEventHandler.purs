@@ -6,8 +6,8 @@ module Functions.Handler.CardManagerEventHandler
 
 import Concur.Core (Widget)
 import Concur.React (HTML, affAction)
-import Control.Alt (void, (<#>), (<$>))
-import Control.Alternative ((*>))
+import Control.Alt ((<#>), (<$>))
+import Control.Alternative ((*>), (<*))
 import Control.Applicative (pure)
 import Control.Bind (bind, (=<<), (>>=))
 import Control.Category ((<<<))
@@ -18,7 +18,7 @@ import Data.Identifier (computeIdentifier)
 import Data.Lens (set, view)
 import Data.List (List(..), singleton, (:))
 import Data.Map (delete, insert, lookup)
-import Data.Maybe (Maybe(..), isJust, isNothing)
+import Data.Maybe (Maybe(..), isNothing)
 import Data.Monoid ((<>))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..), fst, uncurry)
@@ -33,18 +33,17 @@ import DataModel.Proxy (ProxyInfo, ProxyResponse(..))
 import DataModel.SRPVersions.SRP (hashFuncSHA256)
 import DataModel.UserVersions.User (UserInfo(..), _indexReference, _index_reference, _userInfo_identifier, _userInfo_reference)
 import DataModel.WidgetState (CardFormInput(..), CardViewState(..), MainPageWidgetState, Page(..), WidgetState(..), CardManagerState)
-import Effect.Aff (Milliseconds(..), delay, forkAff)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Card (appendToTitle, archiveCard, createCardEntry, decryptCard, restoreCard)
 import Functions.Communication.Blobs (getBlob)
 import Functions.Communication.SyncBackend (syncBackend)
 import Functions.Communication.Users (computeMasterKey, computeRemoteUserCard, encryptUserInfo)
-import Functions.Events (blur, focus, scrollElementIntoView, select)
+import Functions.Events (blur, eventDelayed, focus, scrollElementIntoView, select)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, syncLocalStorage)
 import Functions.Index (encryptIndex)
-import IndexFilterView (Filter(..), FilterViewStatus(..))
+import IndexFilterView (FilterViewStatus(..))
 import OperationalWidgets.Sync (SyncOperation(..))
 import Views.CardsManagerView (CardManagerEvent(..), NavigateCardsEvent(..))
 import Views.CreateCardView (CardFormData, emptyCardFormData)
@@ -53,13 +52,13 @@ import Views.OverlayView (OverlayColor(..), hiddenOverlayInfo, spinnerOverlay)
 import Views.UserAreaView (userAreaInitialState)
 
 handleCardManagerEvent :: CardManagerEvent -> CardManagerState -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
-handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, srpConf, hash: hashFunc, c: Just c, p: Just p, username: Just username, password: Just password, pinEncryptedPassword, enableSync, cardsCache, syncDataWire, donationLevel: Just donationLevel} proxyInfo f = do
+handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, srpConf, hash: hashFunc, c: Just c, p: Just p, username: Just username, password: Just password, pinExists, enableSync, cardsCache, syncDataWire, donationLevel: Just donationLevel} proxyInfo f = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
   
   let defaultPage = { index
                     , credentials:      {username, password}
                     , donationInfo
-                    , pinExists:        isJust pinEncryptedPassword
+                    , pinExists
                     , enableSync
                     , userPreferences
                     , userAreaState: userAreaInitialState
@@ -73,8 +72,6 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
     (NoEvent) -> noOperation (Tuple state (WidgetState hiddenOverlayInfo (Main defaultPage) proxyInfo))
 
     (OpenUserAreaEvent) -> 
-      (blur "indexView" # liftEffect)
-      *> 
       noOperation (Tuple 
                   state
                   (WidgetState
@@ -84,41 +81,37 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
                     proxyInfo
                   )
                 )
+      <* (eventDelayed (focus "userPage") # affAction)
 
     (ShowShortcutsEvent show) ->
       updateCardManagerState defaultPage cardManagerState {showShortcutsHelp = show}
     
     (ShowDonationEvent show) ->
-      (if show then (pure unit) else focus "indexView" # liftEffect)
+      (if show then (pure unit) else focus "mainView" # liftEffect)
       *>
       updateCardManagerState defaultPage cardManagerState {showDonationOverlay = show}
 
     (UpdateDonationLevel days) -> handleDonationPageEvent (DonationEvent.UpdateDonationLevel days) state proxyInfo f
 
     (ChangeFilterEvent filterData) ->
-      (case filterData.filterViewStatus of
-        FilterViewClosed -> focus "indexView"        # liftEffect
-        FilterViewOpen   -> 
-          case filterData.filter of
-            Search _     -> forkAff ((delay (Milliseconds 10.0)) *> ((if filterData.selected then (select "searchInputField") else (pure unit) *> blur "indexView" *> focus "searchInputField") # liftEffect)) # void # affAction
-            _            -> focus "indexView"        # liftEffect
-      )
-      *>
       updateCardManagerState defaultPage cardManagerState { filterData = filterData {selected = false}
                                                           , highlightedEntry = Nothing 
                                                           }
+      <* case filterData.filterViewStatus of
+          FilterViewOpen   -> affAction $
+                                (if   filterData.selected 
+                                 then eventDelayed (select "searchInputField")
+                                 else eventDelayed (focus  "searchInputField")
+                                )
+          FilterViewClosed ->         liftEffect   (focus  "mainView")
 
     (UpdateCardForm cardFormData) ->
       updateCardManagerState defaultPage cardManagerState { cardViewState = updateCardViewState cardManagerState.cardViewState cardFormData }
 
     (NavigateCardsEvent navigationEvent) ->
-      ((forkAff ((delay (Milliseconds 10.0)) *> (scrollElementIntoView "selectedCard" # liftEffect))) # affAction)
-      *>
-      (focus "indexView" # liftEffect)
-      *>
       case navigationEvent of
-        Move             i -> updateCardManagerState defaultPage (cardManagerState {                                 highlightedEntry = Just i })
-        Close       maybei -> updateCardManagerState defaultPage (cardManagerState {cardViewState = NoCard,          highlightedEntry = maybei })
+        Move         entry -> updateCardManagerState defaultPage (cardManagerState {                        highlightedEntry = entry })
+        Close        entry -> updateCardManagerState defaultPage (cardManagerState {cardViewState = NoCard, highlightedEntry = entry })
         Open   Nothing     -> doNothing defaultPage
         Open  (Just entry) -> do
           ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache entry (Main defaultPage) proxyInfo
@@ -133,25 +126,25 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
                 )
           # runExceptT
           >>= handleOperationResult state defaultErrorPage (isNothing $ lookup (reference entry) cardsCache) Black
+        <* (eventDelayed (scrollElementIntoView "selectedCard") # affAction)
+        <* (liftEffect   (focus                 "mainView"))
     
     (OpenCardFormEvent maybeCard) ->
-      (blur "indexView" # liftEffect)
-      *> 
       updateCardManagerState defaultPage cardManagerState { cardViewState = uncurry CardForm $ case maybeCard of
                                                               Nothing                     -> Tuple  emptyCardFormData                 NewCard
                                                               Just (Tuple cardEntry card) -> Tuple (emptyCardFormData {card = card}) (ModifyCard card cardEntry)
                                                           }
+      <* (blur "mainView" # liftEffect)
 
     (AddCardEvent card) ->
-      (focus "indexView" # liftEffect)
-      *> 
-      do
-        cardOperationSteps (Add card) (spinnerWidgetState (Main $ defaultPage {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)}})) cardManagerState state <#> wrapResponse
+      (cardOperationSteps (Add card) (spinnerWidgetState (Main $ defaultPage {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)}})) cardManagerState state <#> wrapResponse
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
+      )
+      <* (focus "mainView" # liftEffect)
 
     (CloneCardEvent cardEntry) ->
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *>
       do
         ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache cardEntry (Main defaultPage) proxyInfo
@@ -163,7 +156,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       >>= handleOperationResult state defaultErrorPage true Black
   
     (DeleteCardEvent cardEntry) ->
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *>
       do
         cardOperationSteps (Delete cardEntry) (spinnerWidgetState (Main defaultPage)) cardManagerState state <#> wrapResponse
@@ -172,7 +165,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       >>= handleOperationResult state defaultErrorPage true Black
 
     (EditCardEvent (Tuple oldCardEntry updatedCard)) ->
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *>
       do
         cardOperationSteps (Edit updatedCard oldCardEntry) (spinnerWidgetState (Main defaultPage {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = updatedCard}) (ModifyCard updatedCard oldCardEntry) }})) cardManagerState state <#> wrapResponse
@@ -181,7 +174,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       >>= handleOperationResult state defaultErrorPage true Black
 
     (ArchiveCardEvent cardEntry) ->
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *>
       do
         ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry             (Main defaultPage) proxyInfo
@@ -193,7 +186,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       >>= handleOperationResult state defaultErrorPage true Black
     
     (RestoreCardEvent cardEntry) ->
-      (focus "indexView" # liftEffect)
+      (focus "mainView" # liftEffect)
       *>
       do
         ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry             (Main defaultPage) proxyInfo
@@ -251,7 +244,7 @@ getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) page proxyIn
 data CardOperation = Add DataModel.CardVersions.Card.Card | Edit DataModel.CardVersions.Card.Card CardEntry | Delete CardEntry
 
 cardOperationSteps :: CardOperation -> (String -> WidgetState) -> CardManagerState -> AppState -> ExceptT AppError (Widget HTML) (Tuple AppState Page)
-cardOperationSteps cardOperation message cardManagerState state@{index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, proxy, hash: hashFunc, srpConf, c: Just c, s: Just s, p: Just p, cardsCache, username: Just username, password: Just password, pinEncryptedPassword, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
+cardOperationSteps cardOperation message cardManagerState state@{index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, proxy, hash: hashFunc, srpConf, c: Just c, s: Just s, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   { saveCardOp, deleteCardOp
@@ -306,7 +299,7 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
         (Main { index:            newIndex
               , credentials:     {username, password}
               , donationInfo
-              , pinExists: isJust pinEncryptedPassword
+              , pinExists
               , enableSync
               , userPreferences
               , userAreaState:    userAreaInitialState

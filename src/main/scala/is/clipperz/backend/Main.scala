@@ -13,7 +13,7 @@ import scala.util.Try
 import zio.{ LogLevel, Runtime, Scope, ZIOAppArgs, ZIO, ZLayer, durationInt }
 import zio.logging.LogFormat
 import zio.metrics.connectors.{ MetricsConfig, datadog }
-import zio.http.{ HttpApp, Middleware, Server }
+import zio.http.{ Middleware, Server }
 import zio.http.netty.{ EventLoopGroups, NettyConfig }
 import zio.http.netty.NettyConfig.LeakDetectionLevel
 import zio.http.Server.RequestStreaming

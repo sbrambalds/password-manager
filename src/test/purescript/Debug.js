@@ -8,21 +8,6 @@ const formatJsonString = (str) => {
   }
 }
 
-const _copyState = function() {
-	return (onError, onSuccess) => {
-		let result = new Promise((resolve, reject) => {
-			Mousetrap.bind('ctrl+alt+c', function(e) {
-				resolve()
-			});
-        });
-
-        result.then(onSuccess).catch(onError);
-        return (cancelError, cancelerError, cancelerSuccess) => {
-        }
-	}
-}
-
 export {
 	formatJsonString
-,	_copyState
 }

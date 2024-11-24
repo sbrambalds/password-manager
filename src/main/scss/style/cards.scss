@@ -22,6 +22,11 @@ div#homePage {
 				display: flex;
 				flex-direction: column;
 
+                & > h2 {
+                    visibility: hidden;
+                    display: none;
+                }
+
 				div.toolbar {
 					display: flex;
 					flex-direction: row;
@@ -312,6 +317,17 @@ div#homePage {
 								// padding: 20px 20px 20px 42px;
 								// border: 0px;
 							}
+
+                            h4 {
+                                font-weight: var(--base-text-weight-semibold, 600);
+                                font-size: 1.5em;
+                                border-top: 1px solid #d8dee4;
+                                margin-bottom: 10px;
+                                font-weight: 600;
+                                line-height: 1.25;
+                                padding: 20px 20px 10px 42px;
+                                overflow-wrap: break-word;
+                            }
 							
 							div.card_tags {
 								padding: 10px;
@@ -939,56 +955,98 @@ div#homePage {
                                     }
                                 }
 
-								button.preview {
-									width: 100%;
-									border: 0;
-									height: 40px;
-									cursor: pointer;
-								}
+                                div.preview {
+                                    width: 100%;
+                                    border: 0;
+                                    // height: 40px;
+                                    display: flex;
+                                    justify-content: flex-start;
+                                    align-items: center;
+                                    
+                                    label {
+                                        flex: 1;
+                                        cursor: pointer;
+                                        margin-right: 10px;
+                                    }
 
-                                .notes {
-                                    display: block;
-                                    padding: 10px $side-margin 10px $side-margin;
-                                    @include fancyHidden;
-
-									//--- fancy stuff, maybe can generalize ------
-									.dynamicWrap {
-										display: grid;
-										
-										&::after {
-											content: attr(replicatedvalue) " ";
-											white-space: pre-wrap;
-											visibility: hidden;
-										}
-
-										textarea {
-											box-sizing: border-box;
-											resize: none;
-											overflow: hidden;
-
-											&::placeholder {
-												font-style: italic;
-												color: #ccc;
-											}
-
-										}
-
-										textarea, &::after {
-											@include dontBreakOut;
-											font-family: 'clipperz-font';
-											font-size: 10pt;
-											line-height: 1.5em;
-											white-space: pre-wrap;
-											word-wrap: break-word;
-											width: 100%;
-											border: 0px;
-											
-											grid-area: 1 / 1 / 2 / 2;
-										}
-									}
-									//---------------------------------------------
-
+                                    h4 {
+                                        flex: 2;
+                                        font-weight: var(--base-text-weight-semibold, 600);
+                                        font-size: 1.5em;
+                                        margin-bottom: 10px;
+                                        font-weight: 600;
+                                        line-height: 1.25;
+                                        padding: 20px 20px 10px 42px;
+                                        overflow-wrap: break-word;
+                                    }
                                 }
+
+                                div.card_notes {
+                                    display: flex;
+                                    flex-direction: row;
+                                    justify-content: center;
+    
+                                    
+                                    &.markdown {
+                                        .notes {
+                                            padding-right: 0px;
+                                        }
+                                        .markdown-body {
+                                            margin-left: 42px;
+                                        }
+                                    }
+
+                                    div.markdown-body {
+                                        flex: 1;
+                                        margin: 10 $side-margin;
+                                    }
+
+                                    .notes {
+                                        flex: 1;
+                                        display: block;
+                                        padding: 10px $side-margin 10px $side-margin;
+                                        @include fancyHidden;
+    
+                                        //--- fancy stuff, maybe can generalize ------
+                                        .dynamicWrap {
+                                            display: grid;
+                                            
+                                            &::after {
+                                                content: attr(replicatedvalue) " ";
+                                                white-space: pre-wrap;
+                                                visibility: hidden;
+                                            }
+    
+                                            textarea {
+                                                box-sizing: border-box;
+                                                resize: none;
+                                                overflow: hidden;
+    
+                                                &::placeholder {
+                                                    font-style: italic;
+                                                    color: #ccc;
+                                                }
+    
+                                            }
+    
+                                            textarea, &::after {
+                                                @include dontBreakOut;
+                                                font-family: 'clipperz-font';
+                                                font-size: 10pt;
+                                                line-height: 1.5em;
+                                                white-space: pre-wrap;
+                                                word-wrap: break-word;
+                                                width: 100%;
+                                                border: 0px;
+                                                
+                                                grid-area: 1 / 1 / 2 / 2;
+                                            }
+                                        }
+                                        //---------------------------------------------
+    
+                                    }
+                                }
+
                             }
                             .submitButtons {
                                 flex: 0;

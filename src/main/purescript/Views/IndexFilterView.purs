@@ -5,12 +5,14 @@ import Concur.React (HTML)
 import Concur.React.DOM (div, form, input, int, label, li, ol, span, text)
 import Concur.React.Props as Props
 import Control.Alt (($>), (<#>))
-import Control.Category (identity, (>>>))
+import Control.Category (identity, (<<<), (>>>))
 import Data.Array (any, nub, sort, (:))
 import Data.Eq (class Eq, (==))
 import Data.Function (($))
 import Data.Functor ((<$>), (<$))
 import Data.HeytingAlgebra (not, (||))
+import Data.Lens (Lens', set)
+import Data.Lens.Record (prop)
 import Data.List (List, fold, length)
 import Data.List as List
 import Data.Maybe (Maybe(..))
@@ -19,6 +21,7 @@ import Data.Semigroup ((<>))
 import Data.Set (isEmpty, member, toUnfoldable)
 import Data.String (Pattern(..), contains, toLower)
 import DataModel.IndexVersions.Index (CardEntry(..), Index(..))
+import Type.Proxy (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 numberOfRecent :: Int
@@ -35,6 +38,9 @@ type FilterData = {
 , searchString :: String
 , selected :: Boolean
 }
+
+_filterViewStatus :: Lens' FilterData FilterViewStatus
+_filterViewStatus = prop (Proxy :: _ "filterViewStatus")
 
 data FilterViewStatus = FilterViewClosed | FilterViewOpen
 
@@ -53,7 +59,8 @@ initialFilterData = {
 }
 
 indexFilterView :: FilterData -> Index -> Widget HTML FilterData
-indexFilterView filterData@{archived, filter, searchString} (Index {entries}) = div [Props._id "filterView"] [
+indexFilterView filterData@{archived, filter, searchString} (Index {entries}) = 
+  div [Props._id "filterView", Props.tabIndex 0, Props.filterProp (\e -> (unsafeCoerce e).key == "Escape") Props.onKeyDown $> set _filterViewStatus FilterViewClosed filterData] [
     (filterData {filterViewStatus = FilterViewClosed}) <$ div [Props.onClick, Props.className "mask"] []
   , div [Props.className "content"] [
       div [Props.className "filter"] [
@@ -86,7 +93,7 @@ indexFilterView filterData@{archived, filter, searchString} (Index {entries}) = 
         , ol [Props._id "tagFilter"] (
                 (\tag -> getFilterListElement (Tag tag) tag [] (filter == Tag tag)) 
             <$> (sort $ nub $ fold $ (\(CardEntry { tags }) -> toUnfoldable tags) 
-            <$> (shownEntries entries Nothing archived))
+            <$> (shownEntries entries Nothing Nothing archived))
           )
         ] <#> updateFilter
       ]
@@ -124,21 +131,21 @@ indexFilterView filterData@{archived, filter, searchString} (Index {entries}) = 
     filterCardsNumber :: Filter -> Int
     filterCardsNumber filter' =
       case filter' of
-        Recent                -> min numberOfRecent (length $ shownEntries entries Nothing archived)
-        filter_               -> length (filteredEntries filter_ $ shownEntries entries Nothing archived)
+        Recent                -> min numberOfRecent (length $ shownEntries entries Nothing Nothing archived)
+        filter_               -> length (filteredEntries filter_ $ shownEntries entries Nothing Nothing archived)
 
     min :: Int -> Int -> Int
     min n n' = if n < n' then n else n'
 
-shownEntries :: List CardEntry -> Maybe CardEntry -> Boolean -> List CardEntry
-shownEntries entries selectedEntry archived = List.filter (\(CardEntry r) -> archived || (not r.archived) || (Just (CardEntry r) == selectedEntry)) entries
+shownEntries :: List CardEntry -> Maybe CardEntry -> Maybe CardEntry -> Boolean -> List CardEntry
+shownEntries entries selectedEntry highlightedEntry archived = List.filter (\(CardEntry r) -> archived || (not r.archived) || (Just (CardEntry r) == selectedEntry) || (Just (CardEntry r) == highlightedEntry)) entries
 
 filteredEntries :: Filter -> List CardEntry -> List CardEntry
 filteredEntries filter = case filter of
   Search searchString'  -> if searchString' == ""
-                           then identity
-                           else List.filter (\(CardEntry entry)             -> any (contains (Pattern (toLower searchString'))) (toLower <$> (entry.title : toUnfoldable entry.tags))) -- TODO: may be improved with a proper information retrieval system [fsolaroli - 27/11/2023]
-  Tag    tag'           ->      List.filter (\(CardEntry entry)             -> member  tag' entry.tags)                                                                     
-  Untagged              ->      List.filter (\(CardEntry entry)             -> isEmpty      entry.tags)                                                                     
-  Recent                ->      List.sortBy (\(CardEntry e1) (CardEntry e2) -> compare e1.lastUsed e2.lastUsed) >>> List.takeEnd numberOfRecent
-  All                   ->      identity      
+                           then List.sort <<< identity
+                           else List.sort <<< List.filter (\(CardEntry entry)             -> any (contains (Pattern (toLower searchString'))) (toLower <$> (entry.title : toUnfoldable entry.tags))) -- TODO: may be improved with a proper information retrieval system [fsolaroli - 27/11/2023]
+  Tag    tag'           ->      List.sort <<< List.filter (\(CardEntry entry)             -> member  tag' entry.tags)                                                                     
+  Untagged              ->      List.sort <<< List.filter (\(CardEntry entry)             -> isEmpty      entry.tags)                                                                     
+  Recent                ->      List.sortBy (\(CardEntry e1) (CardEntry e2) -> compare e1.lastUsed e2.lastUsed) >>> List.takeEnd numberOfRecent >>> List.reverse
+  All                   ->      List.sort <<< identity      

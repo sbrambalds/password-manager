@@ -62,7 +62,7 @@ cleanTargetSubdir := {
 //=====================================================================
 
 ThisBuild / organization := "is.clipperz"
-ThisBuild / scalaVersion := "3.4.2"
+ThisBuild / scalaVersion := "3.5.1"
 
 ThisBuild / scalacOptions ++=
   Seq(
@@ -72,8 +72,8 @@ ThisBuild / scalacOptions ++=
     "-unchecked",
     "-Xfatal-warnings",
     "-Yexplicit-nulls", // experimental (I've seen it cause issues with circe)
-    "-Ykind-projector",
-    "-Ysafe-init", // experimental (I've seen it cause issues with circe)
+    "-Xkind-projector",
+    "-Wsafe-init", // experimental (I've seen it cause issues with circe)
   ) ++ Seq("-rewrite", "-indent") ++ Seq("-source", "future")
 
 lazy val `clipperz-backend` =
@@ -97,12 +97,12 @@ lazy val commonScalacOptions = Seq(
     (Compile / console / scalacOptions).value,
 )
 
-val zio_version =         "2.1.5"
-val zio_http_version =    "3.0.0-RC9"
-val zio_logging_version = "2.2.4"
-val zio_json_version =    "0.6.2"
+val zio_version =         "2.1.11"
+val zio_http_version =    "3.0.1"
+val zio_logging_version = "2.3.1"
+val zio_json_version =    "0.7.3"
 val zio_cache_version =   "0.2.3"
-val nscala_time_version = "2.32.0"
+val nscala_time_version = "2.34.0"
 val zio_metrics_version = "2.3.1"
 val zio_nio_version =     "2.0.2"
 

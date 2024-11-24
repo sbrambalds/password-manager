@@ -42,21 +42,19 @@ object BlobSpec extends ZIOSpecDefault:
                   assertTrue(response.status.code == 200)
                 , assertTrue(fileExists)
                 , assertTrue(metadataExists)
-            // ,   assertTrue(body                 == validBlobHash.toString)
             )
         },
 
         test("POST large blob") {
             // val file_signature = blob_1K    //  OK
-            val file_signature = blob_8K    //  OK
-            // val file_signature = blob_1M    //  fail
+            // val file_signature = blob_8K    //  OK
+            val file_signature = blob_1M    //  OK
             for {
-                content  <- readSampleBlob(file_signature)
+                content  <- readSampleBlob(file_signature).flatMap(_.runCollect)
                 response <- app.runZIO(post(HexString(file_signature), identifier, content))
                 body     <- response.body.asString
             } yield allSuccesses(
                 assertTrue(response.status.code == 200)
-            // ,   assertTrue(body                 == validBlobHash.toString)
             )
         } @@ TestAspect.timeout(2.second),
 
@@ -99,7 +97,6 @@ object BlobSpec extends ZIOSpecDefault:
                 content     <- validBlobData
                 response    <- app.runZIO(post(HexString("wrong"), identifier, content))
                 body        <- response.body.asString
-                // statusCode  =  response.status.code
             } yield allSuccesses(
                   assertTrue(response.status.code == 400)
                 , assertTrue(body == "Hash of content does not match with hash field provided")
@@ -160,13 +157,10 @@ object BlobSpec extends ZIOSpecDefault:
     @@ TestAspect.timeout(30.second)
     @@ TestAspect.before   (TestUtilities.deleteFilesInFolder(blobBasePath))
     @@ TestAspect.beforeAll(TestUtilities.deleteFilesInFolder(blobBasePath))
-    // @@ TestAspect.afterAll (TestUtilities.deleteFilesInFolder(blobBasePath))
 
     // ========================================================================
 
-    val app =  (   blobsApi        
-               ).handleErrorCauseZIO(customErrorHandler)
-                // .toHttpApp
+    val app = blobsApi.handleErrorCauseZIO(customErrorHandler)
     val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
     val userBasePath = FileSystem.default.getPath("target", "tests", "archive", "users")
     val oneTimeShareBasePath = FileSystem.default.getPath("target", "tests", "archive", "one_time_share")
@@ -184,9 +178,6 @@ object BlobSpec extends ZIOSpecDefault:
         OneTimeShareArchive.fs(oneTimeShareBasePath, keyBlobArchiveFolderDepth, false) ++
         ((UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
         (PRNG.live >>> TollManager.live)
-
-    // val largeBlobData: Task[ZStream[Any, Nothing, Byte]] = Files.readAllBytes(Path("src/test/resources/blobs/4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63.blob")).map(ZStream.fromChunk)
-    // val largeBlobHash = HexString("4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63")
 
     val blob_1K     = "0dfba6266bcebf53a0ed863f5df4edf56066e6a5194df242a2b31f13bf7bb9f8"
     val blob_2K     = "8960c75f721872b381f4e81ca7219bd268a47019e019264de3418088e4b1fbb0"
@@ -208,34 +199,29 @@ object BlobSpec extends ZIOSpecDefault:
 
 
     val validBlobHash = HexString("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae")
-    // val validBlobData = Charset.Standard.utf8.encodeString("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam ante massa, congue a sapien vel, efficitur facilisis eros. Mauris varius leo ut dolor malesuada, a pretium est scelerisque. Integer ut.").map(ZStream.fromChunk)
-    val validBlobData = readSampleBlob("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae")
+    val validBlobData = readSampleBlob("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae").flatMap(_.runCollect)
     val identifier    = HexString("affa")
 
     def readSampleBlob (blobHash: String): Task[ZStream[Any, Nothing, Byte]] = Files.readAllBytes(Path(s"src/test/resources/blobs/${blobHash}.blob")).map(ZStream.fromChunk)
 
-    def post (hash: HexString, identifier: HexString, data: ZStream[Any, Nothing, Byte]) = Request(
+    def post (hash: HexString, identifier: HexString, data: Chunk[Byte]) = Request(
         url = URL(root / "api" / "blobs"),
         method = Method.POST,
-        body = Body.fromStream(
+        body = Body.fromMultipartForm(
             Form(
-                FormField.binaryField(name = "identifier", data = Chunk.fromArray(identifier.toByteArray), mediaType = MediaType.application.`octet-stream`),
-                FormField.StreamingBinary(
-                      name = "blob"
-                    , data = data //    ZStream.fromChunk(Chunk.fromArray(data))
-                    , filename = Some(hash.toString())
-                    , contentType = MediaType.application.`octet-stream`
-                ),
-                // FormField.StreamingBinary(
-                //       name = "identifier"
-                //     , data = ZStream.fromChunk(Chunk.fromArray(identifier.toByteArray))
-                //     , filename = Some(identifier.toString())
-                //     , contentType = MediaType.application.`octet-stream`
-                // )
+                FormField.binaryField(
+                    name = "blob"
+                ,   data = data
+                ,   filename = Some(hash.toString())
+                ,   mediaType = MediaType.application.`octet-stream`
+                )
+            ,   FormField.binaryField(
+                    name = "identifier"
+                ,   data = Chunk.fromArray(identifier.toByteArray)
+                ,   mediaType = MediaType.application.`octet-stream`),
             )
-            // , specificBoundary = Boundary(boundary)
-            .multipartBytes(Boundary(boundary))
-        ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
+        ,   specificBoundary = Boundary(boundary)
+        ),
         version = Version.Http_1_1,
     )
 
@@ -251,13 +237,13 @@ object BlobSpec extends ZIOSpecDefault:
     def delete (hash: HexString, identifier: HexString) = Request(
         url = URL(root / "api" / "blobs" / hash.toString()),
         method = Method.DELETE,
-        body = Body.fromStream(
+        body = Body.fromMultipartForm(
             Form(FormField.binaryField(
-                  name = "identifier"
-                , data = Chunk.fromArray(identifier.toByteArray)
-                , mediaType = MediaType.application.`octet-stream`
+                name = "identifier"
+            ,   data = Chunk.fromArray(identifier.toByteArray)
+            ,   mediaType = MediaType.application.`octet-stream`
             ))
-            .multipartBytes(Boundary(boundary))
+        ,   specificBoundary = Boundary(boundary)
         ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
         version = Version.Http_1_1,
     )

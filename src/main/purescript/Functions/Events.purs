@@ -12,6 +12,8 @@ module Functions.Events
   , renderElement
   , scrollElementIntoView
   , select
+  , eventDelayed
+  , effectDelayed
   )
   where
 
@@ -19,8 +21,9 @@ import Prelude
 
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, Milliseconds(..), delay, forkAff)
 import Effect.Aff.Compat (EffectFnAff, fromEffectFnAff)
+import Effect.Class (liftEffect)
 import React.SyntheticEvent (SyntheticEvent_, SyntheticMouseEvent, NativeEventTarget)
 import Web.DOM.Element (Element)
 
@@ -43,6 +46,14 @@ foreign import focus  :: String -> Effect Unit
 foreign import blur   :: String -> Effect Unit
 foreign import select :: String -> Effect Unit
 foreign import scrollElementIntoView :: String -> Effect Unit
+
+type ElementID = String
+
+eventDelayed :: Effect Unit -> Aff Unit
+eventDelayed = effectDelayed 10.0
+
+effectDelayed :: Number -> Effect Unit -> Aff Unit
+effectDelayed delayTime event = forkAff ((delay (Milliseconds delayTime)) *> (event # liftEffect)) # void
 
 readFile :: NativeEventTarget -> Aff String
 readFile ev = fromEffectFnAff (_readFile ev)

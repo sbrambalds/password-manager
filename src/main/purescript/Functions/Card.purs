@@ -61,12 +61,12 @@ encryptCard card hashFunc = do
 -- ------------------------------------------------------------------------
 
 createCardEntry :: HashFunction -> Card -> Aff (Tuple ArrayBuffer CardEntry)
-createCardEntry hashFunc card@(Card { content: (CardValues content), archived, timestamp: _ }) = do
+createCardEntry hashFunc card@(Card { content: (CardValues content), archived, timestamp }) = do
   Tuple encryptedCard cardReference <- encryptCard card hashFunc
   let cardEntry  = CardEntry { title: content.title
                              , tags: content.tags
                              , archived: archived
-                             , lastUsed: 0.0 --TODO handle lastUsed [fsolaroli - 28/02/2024]
+                             , lastUsed: timestamp
                              , cardReference
                              }
   pure $ Tuple encryptedCard cardEntry

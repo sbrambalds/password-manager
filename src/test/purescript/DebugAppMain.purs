@@ -25,7 +25,7 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Foreign (unsafeToForeign)
 import Functions.Clipboard (getClipboardContent)
-import JSURI (decodeURIComponent)
+import JSURI (decodeURIComponent, encodeURI)
 import Test.Debug (formatJsonString)
 import Test.DebugCodec (widgetStateCodec)
 import Views.AppView (appView)
@@ -42,6 +42,7 @@ debugApp :: Maybe WidgetState -> Widget HTML Unit
 
 debugApp Nothing = do
   hash_ <- liftEffect $ (hash =<< location =<< window) <#> (\s -> stripPrefix (Pattern "#") s >>= decodeURIComponent)
+
   (maybe (affAction $ getClipboardContent) (pure <<< Just) hash_) >>= getWidgetState true Nothing >>= loop
 
 debugApp defaultState = getWidgetState false Nothing ((stringify <<< CA.encode widgetStateCodec) <$> defaultState) >>= loop
@@ -77,7 +78,7 @@ decodeWidgetStateJson jsonEncodedState = do
   case decodeResult of
     Left  err         -> liftEffect removeFragment *> getWidgetState false (Just err) (Just jsonEncodedState)
     Right widgetState -> do
-      liftEffect $ setHash jsonEncodedState =<< location =<< window
+      liftEffect $ setHash (fromMaybe "" $ encodeURI jsonEncodedState) =<< location =<< window
       pure widgetState
   
   where

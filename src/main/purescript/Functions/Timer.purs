@@ -6,3 +6,6 @@ import Effect (Effect)
 foreign import activateTimer :: Int -> Effect Unit
 
 foreign import stopTimer :: Effect Unit
+
+foreign import resetTimer :: Effect Unit
+

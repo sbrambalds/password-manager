@@ -14,13 +14,16 @@ import Data.Function ((#), ($))
 import Data.Functor ((<$))
 import Data.Int (toNumber)
 import Data.List (List)
+import Data.Maybe (fromMaybe)
 import Data.Show (show)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..))
 import Data.Unit (Unit, unit)
-import DataModel.AppError (AppError)
+import DataModel.AppError (AppError(..))
 import DataModel.AppState (AppState)
-import DataModel.WidgetState (Page(..), WidgetState(..))
+import DataModel.Communication.ProtocolError (ProtocolError(..))
+import DataModel.Credentials (emptyCredentials)
+import DataModel.WidgetState (LoginType(..), Page(..), WidgetState(..))
 import Effect (Effect)
 import Effect.Aff (Aff, delay)
 import Effect.Class (liftEffect)
@@ -68,10 +71,13 @@ handleOperationResult state@{proxy} page showDone color =
   where
     manageError :: AppError -> Widget HTML OperationState
     manageError error = 
+      (liftEffect $ log $ show error) *>
       case error of
         -- _ -> ErrorPage --TODO
-        err -> do
-          liftEffect $ log $ show err
+        ProtocolError MaxPinAttemptsReachedError -> do
+          delayOperation 500                       (WidgetState { status: Failed, color, message: "Max pin attempts" } page (getProxyInfoFromProxy proxy))
+          pure $ Tuple (state {pinExists = false}) (WidgetState { status: Hidden, color, message: ""                 } (Login $ emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = CredentialLogin}) (getProxyInfoFromProxy proxy))
+        _ -> do
           delayOperation 500 (WidgetState { status: Failed, color, message: "error" } page (getProxyInfoFromProxy proxy))
           pure $ Tuple state (WidgetState { status: Hidden, color, message: ""      } page (getProxyInfoFromProxy proxy))
 

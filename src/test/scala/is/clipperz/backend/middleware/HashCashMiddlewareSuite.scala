@@ -12,12 +12,11 @@ import zio.test.{ ZIOSpecDefault, assertTrue, assertNever, assert, assertZIO, Te
 import zio.json.EncoderOps
 import zio.http.{ Version, Headers, Handler, Method, URL, Request, Body }
 import zio.http.*
+import zio.http.Root
 import is.clipperz.backend.Main
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.functions.crypto.HashFunction
-// import java.nio.file.Path
-// import is.clipperz.backend.functions.FileSystem
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
 import is.clipperz.backend.services.UserArchive
@@ -25,7 +24,6 @@ import is.clipperz.backend.services.BlobArchive
 import is.clipperz.backend.services.TollManager
 import is.clipperz.backend.services.tollByteSize
 import is.clipperz.backend.services.SrpManager
-// import is.clipperz.backend.middleware.{ hashcash }
 import is.clipperz.backend.services.TollChallenge
 import is.clipperz.backend.services.TollReceipt
 import java.net.InetAddress
@@ -66,8 +64,8 @@ object HashCashMiddlewareSpec extends ZIOSpecDefault:
     remoteAddress = Some(InetAddress.getLocalHost().nn)
   )
 
-  val idApp: Routes[TollManager & SessionManager, Nothing] = Routes(Method.ANY / Root -> Handler.ok) @@ hashcash(ChallengeType.MESSAGE, ChallengeType.MESSAGE)
-
+  val idApp: Routes[TollManager & SessionManager, Nothing] = Routes(Method.ANY / "api" / "blobs" / string("c") -> Handler.ok) @@ hashcash(ChallengeType.MESSAGE, ChallengeType.MESSAGE)
+  
   def spec = suite("HashCashMiddleware")(
     test("400 if no session is active") {
         for {
@@ -147,7 +145,7 @@ object HashCashMiddlewareSpec extends ZIOSpecDefault:
         receipt <- TollManager.computeReceipt(prng, tollManager)(TollChallenge(toll, cost))
         newGet <- ZIO.succeed(
           Request(
-            url = URL(Path.root / "blobs" / "4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63"),
+            url = URL(Path.root / "api" / "blobs" / "4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63"),
             method = Method.GET,
             headers = Headers.empty,
             body = Body.empty,
@@ -162,12 +160,12 @@ object HashCashMiddlewareSpec extends ZIOSpecDefault:
         response2 <- idApp.runZIO(newGet)
       } yield assertTrue(response2.status == Status.Ok)
     },
-    // test("402 if repeated hashcash") {
-    //   assertNever("Yet to be implemented")
-    // },
-    // test("Can manage multiple challenges simultaneously") {
-    //   assertNever("Yet to be implemented")
-    // },
+    test("402 if repeated hashcash") {
+      assertNever("Yet to be implemented")  //TODO: implement
+    } @@ TestAspect.ignore,
+    test("Can manage multiple challenges simultaneously") {
+      assertNever("Yet to be implemented")  //TODO: implement
+    } @@ TestAspect.ignore,
   ).provideSomeLayer(layers) @@
     TestAspect.sequential
 

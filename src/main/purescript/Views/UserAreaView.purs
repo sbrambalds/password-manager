@@ -25,6 +25,7 @@ import DataModel.WidgetState (ImportState, UserAreaPage(..), UserAreaState, User
 import Effect.Class (liftEffect)
 import Functions.EnvironmentalVariables (currentCommit, donationIFrameURL)
 import OperationalWidgets.Sync (SyncData)
+import Unsafe.Coerce (unsafeCoerce)
 import Views.ChangePasswordView (changePasswordView)
 import Views.Components (Enabled(..), footerComponent)
 import Views.DeleteUserView (deleteUserView)
@@ -56,7 +57,7 @@ userAreaInitialState = { showUserArea: false, userAreaOpenPage: None, importStat
 userAreaView :: UserAreaState -> UserPreferences -> Credentials -> Maybe DonationInfo -> ProxyInfo -> Boolean -> EnableSync -> Maybe (Wire (Widget HTML) SyncData) -> Widget HTML (Tuple UserAreaEvent UserAreaState)
 userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenus} userPreferences credentials donationInfo proxyInfo pinExists enableSync syncDataWire = do
   commitHash <- liftEffect currentCommit
-  ((div [Props._id "userPage", Props.className (if showUserArea then "open" else "closed")] [
+  ((div [Props._id "userPage", Props.className (if showUserArea then "open" else "closed"), Props.tabIndex 0, Props.filterProp (\e -> (unsafeCoerce e).key == "Escape") Props.onKeyDown $> CloseUserAreaEvent] [
       div [Props.onClick, Props.className "mask"] [] $> CloseUserAreaEvent
     , div [Props.className "panel"] [
         header [] [div [] [button [Props.onClick] [text "menu"]]] $> CloseUserAreaEvent
@@ -76,14 +77,14 @@ userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenu
         , subMenuElement ChangePassword (Enabled enabled) "Passphrase"
         , subMenuElement Delete         (Enabled enabled) "Delete account"
         ]
-      , subMenu Data    "Data"    [
-          subMenuElement Import         (Enabled enabled) "Import"
-        , subMenuElement Export         (Enabled enabled) "Export"
-        ]
       , subMenu Device  "Device" [
           subMenuElement Pin            (Enabled true   ) "Device PIN"
         , subMenuElement DeviceSync     (Enabled true   ) "Device Sync" 
       ]
+      , subMenu Data    "Data"    [
+          subMenuElement Import         (Enabled enabled) "Import"
+        , subMenuElement Export         (Enabled enabled) "Export"
+        ]
       , subMenuElement   Donate         (Enabled true)     "Donate" <#> OpenUserAreaPage
       , li' [a      [Props.className "link", Props.href "/about/app", Props.target "_blank"] [span [] [text "About"]]]
       , li' [button [Props.onClick, Props._id "lockButton"]                                  [span [] [text "Lock"]]]   $> LockEvent

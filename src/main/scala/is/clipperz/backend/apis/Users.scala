@@ -51,15 +51,16 @@ val usersApi: Routes[BlobArchive & UserArchive & SessionManager, Throwable] = Ro
             )
         )
         .map(results => Response.text(results._1.toString)) @@ LogAspect.logAnnotateRequestData(request)
-        )//.tapZIO(_ => ZIO.log("POST USER"))
+        )
 ) ++
 Routes( 
     Method.PUT / "api"  / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
         .service[UserArchive]
         .zip(ZIO.service[BlobArchive])
+        .zip(ZIO.service[SessionManager])
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((userArchive, blobArchive, content) =>
+        .flatMap((userArchive, blobArchive, sessionManager, content) =>
             userArchive
             .getUser(HexString(c))
             .flatMap(optionalUser =>
@@ -82,7 +83,9 @@ Routes(
                     then
                         (userArchive.saveUser(remoteFromRequest(userCard), true))
                         <&>
-                        userArchive.deleteUser(HexString(c))
+                        (sessionManager.updateSession(request, userCard.c.toString()))
+                        <&>
+                        (userArchive.deleteUser(HexString(c)))
                     else
                         ZIO.fail(new BadRequestException("origin does not match"))
                     )
@@ -130,10 +133,6 @@ Routes(
             userArchive    <- ZIO.service[UserArchive]
             sessionManager <- ZIO.service[SessionManager]
             _              <- userArchive.deleteUser(HexString(c))
-            result         <- ZIO.succeed(true) //  TODO: fix this hack: Giulio Cesare [26-02-2024]
             _              <- sessionManager.deleteSession(request)
-        } yield (if result
-            then Response.text(c)
-            else Response(status = Status.NotFound)
-        )) @@ LogAspect.logAnnotateRequestData(request)
+        } yield Response.text(c)) @@ LogAspect.logAnnotateRequestData(request)
 ) @@ authorizedMiddleware(req => ZIO.attempt(req.path.segments.last))

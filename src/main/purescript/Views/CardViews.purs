@@ -3,7 +3,7 @@ module Views.CardViews where
 import Concur.Core (Widget)
 import Concur.Core.FRP (Signal, fireOnce, loopW)
 import Concur.React (HTML, affAction)
-import Concur.React.DOM (a, a_, button, div, h3, li', li_, p_, span, text, textarea, ul)
+import Concur.React.DOM (a, a_, button, div, h3, h4, li', li_, p_, text, textarea, ul)
 import Concur.React.Props as Props
 import Control.Alt (($>), (<|>))
 import Control.Alternative (empty, (*>))
@@ -11,7 +11,7 @@ import Control.Applicative (pure)
 import Control.Bind (bind, discard)
 import Data.Array (null)
 import Data.Eq ((==))
-import Data.Function (($))
+import Data.Function ((#), ($))
 import Data.Functor ((<$), (<$>))
 import Data.HeytingAlgebra (not, (&&))
 import Data.Maybe (Maybe(..))
@@ -22,9 +22,11 @@ import DataModel.CardVersions.Card (Card(..), CardField(..), CardValues(..), Fie
 import DataModel.IndexVersions.Index (CardEntry)
 import DataModel.Proxy (ProxyInfo(..))
 import Effect.Aff (Milliseconds(..), delay)
+import Effect.Class (liftEffect)
 import Effect.Unsafe (unsafePerformEffect)
 import Functions.Card (getFieldType)
 import Functions.Clipboard (copyToClipboard)
+import Functions.Timer (resetTimer)
 import MarkdownIt (renderString)
 import Views.Components (dynamicWrapper, entropyMeter)
 import Views.OverlayView (OverlayColor(..), OverlayStatus(..), overlay)
@@ -91,7 +93,7 @@ cardContent (CardValues {title: t, tags: ts, fields: fs, notes: n}) = div [Props
 , if (isEmpty ts) then (empty) else div [Props.className "card_tags"] [ul [] $ (\s -> li' [text s]) <$> (toUnfoldable ts)]
 , if (null    fs) then (empty) else div [Props.className "card_fields"] $ cardField false <$> fs
 , div [Props.className "card_notes"] [
-    if (isEmpty ts && null fs) then (empty) else h3 [] [text "Notes"]
+    if (isEmpty ts && null fs) then (empty) else h4 [] [text "Notes"]
   , div [Props.className "markdown-body", Props.dangerouslySetInnerHTML { __html: unsafePerformEffect $ renderString n}] []
   ]
 ]
@@ -114,10 +116,11 @@ cardField showPassword f@(CardField {name, value, locked}) = do
       getActionButton
     ]
   ]
-  case res of
+  (case res of
     ShowPassword -> cardField true         f <|> (affAction $                          delay (Milliseconds 5000.0))
     CopyValue    -> cardField showPassword f <|> (affAction $ copyToClipboard value *> delay (Milliseconds 1000.0)) <|> overlay { status: Copy, color: Black, message: "copied" }
     HidePassword -> pure unit
+  *> (resetTimer # liftEffect))
   cardField false f
 
   where

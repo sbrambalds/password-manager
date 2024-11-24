@@ -80,6 +80,7 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
           span [Props.className "label"] [text "Passphrase"]
         , (Props.unsafeTargetValue) <$> input [
             Props._type "password"
+          , Props._id "loginPassphraseInput"
           , Props.placeholder "passphrase"
           , Props.value password
           , Props.autoComplete "off", Props.autoCorrect "off", Props.autoCapitalize "off", Props.spellCheck false
@@ -109,6 +110,7 @@ pinLoginWidget active loginFormData@{pin} = do
       span [Props.className "label"] [text "Login"]
     , (Props.unsafeTargetValue) <$> input [
         Props._type "tel"
+      , Props._id "loginPINInput"
       , Props.placeholder "PIN"
       , Props.value pin
       , Props.autoComplete "off", Props.autoCorrect "off", Props.autoCapitalize "off", Props.spellCheck false

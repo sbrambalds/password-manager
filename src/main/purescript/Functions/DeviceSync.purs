@@ -32,7 +32,7 @@ import Web.HTML.Window (localStorage)
 import Web.Storage.Storage (Storage, getItem, removeItem, setItem)
 
 enableSyncKey :: HexString -> String
-enableSyncKey c = "enableSync_" <> toString Hex c
+enableSyncKey c = "user_" <> toString Hex c
 
 getSyncOptionFromLocalStorage :: HexString -> Effect Boolean
 getSyncOptionFromLocalStorage c = 

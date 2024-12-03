@@ -15,6 +15,7 @@ import Data.Function ((#), ($))
 import Data.Functor ((<$), (<$>))
 import Data.HeytingAlgebra (not, (&&))
 import Data.Maybe (Maybe(..))
+import Data.Ring (negate)
 import Data.Semigroup ((<>))
 import Data.Set (isEmpty, toUnfoldable)
 import Data.Unit (unit)
@@ -126,9 +127,9 @@ cardField showPassword f@(CardField {name, value, locked}) = do
   where
     getActionButton =
       case getFieldType f of
-        Passphrase  -> button [Props.className "action PASSWORD", Props.disabled false, Props.onClick        ] [text "view password"] $> if showPassword then HidePassword else ShowPassword
-        Email       -> button [Props.className "action EMAIL",    Props.disabled true                        ] [text "email"        ]
-        Url         -> a      [Props.className "action URL",      Props.disabled false, Props.href   value
-                                                                                      , Props.target "_blank"] [text "url"          ]
-        None        -> button [Props.className "action NONE",     Props.disabled true                        ] [text "none"         ]
+        Passphrase  -> button [Props.className "action PASSWORD", Props.tabIndex (-1), Props.disabled false, Props.onClick        ] [text "view password"] $> if showPassword then HidePassword else ShowPassword
+        Email       -> button [Props.className "action EMAIL",                         Props.disabled true                        ] [text "email"        ]
+        Url         -> a      [Props.className "action URL",                           Props.disabled false, Props.href   value
+                                                                                                           , Props.target "_blank"] [text "url"          ]
+        None        -> button [Props.className "action NONE",                          Props.disabled true                        ] [text "none"         ]
 

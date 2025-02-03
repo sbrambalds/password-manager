@@ -35,7 +35,7 @@ import Functions.EncodeDecode (importCryptoKeyAesGCM)
 import Functions.Events (effectDelayed, focus)
 import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Index (getIndex)
-import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, makeKey)
+import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, pinFailureCountKey)
 import Functions.SRP (checkM2)
 import Functions.State (getProxyInfoFromProxy, updateProxy)
 import Functions.Timer (activateTimer)
@@ -166,14 +166,14 @@ handlePinResult {proxy} page color either = do
   
   case either of
     Right _ -> do
-        liftEffect $ setItem (makeKey "failureCount") (show 0) storage
+        liftEffect $ setItem pinFailureCountKey (show 0) storage
         delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) page proxyInfo
         pure either
     Left  _ -> do
-        failures <- liftEffect $ getItem (makeKey "failureCount") storage
+        failures <- liftEffect $ getItem pinFailureCountKey storage
         let count = ((fromMaybe 0 <<< fromString <<< fromMaybe "") failures) + 1
         if count < 3 then do
-          liftEffect $ setItem (makeKey "failureCount") (show count) storage
+          liftEffect $ setItem pinFailureCountKey (show count) storage
           effectDelayed 510.0 (focus "loginPINInput" # liftEffect) # affAction
           pure either
         else do

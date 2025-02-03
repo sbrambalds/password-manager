@@ -59,7 +59,7 @@ import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Import (ImportVersion(..), decodeImport, parseImport, readFile)
 import Functions.Index (updateIndex)
-import Functions.Pin (deleteCredentials, makeKey, pinExists, saveCredentials)
+import Functions.Pin (deleteCredentials, pinExists, pinUsernameKey, saveCredentials)
 import Functions.State (resetState)
 import Functions.Time (formatDateTimeToDate, getCurrentDateTime)
 import Functions.Timer (activateTimer, stopTimer)
@@ -464,7 +464,7 @@ logoutSteps state@{username, hash: hashFunc, proxy, srpConf} logoutType page pro
 
     stopTimer # liftEffect
 
-    localStorageUsername <- runStep (liftEffect $ window >>= localStorage >>= getItem (makeKey "user"))       (WidgetState (spinnerOverlay message White) page proxyInfo)    
+    localStorageUsername <- runStep (liftEffect $ window >>= localStorage >>= getItem pinUsernameKey)       (WidgetState (spinnerOverlay message White) page proxyInfo)    
     pinExists            <- pinExists # liftEffect
 
     pure $ Tuple 

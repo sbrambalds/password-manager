@@ -14,11 +14,12 @@ import Data.Codec.Argonaut.Common as CAC
 import Data.Either (Either(..), either, note)
 import Data.Foldable (fold)
 import Data.Formatter.DateTime (formatDateTime)
-import Data.Function (($))
+import Data.Function ((#), ($))
 import Data.Functor ((<$>))
 import Data.HTTP.Method (Method(..))
 import Data.HexString (HexString)
 import Data.List (List)
+import Data.List as List
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.MediaType (MediaType(..))
 import Data.MediaType.Common (textHTML)
@@ -39,10 +40,11 @@ import DataModel.UserVersions.User (RequestUserCard, requestUserCardCodec)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
+import Functions.Card (encodeDeltaCard)
 import Functions.Communication.Backend (isStatusCodeOk, genericRequest)
 import Functions.Events (renderElement)
 import Functions.State (offlineDataId)
-import Functions.Time (formatDateTimeToDate, formatDateTimeToTime, getCurrentDateTime)
+import Functions.Time (getCurrentDateTime)
 import Web.DOM.Document (Document, documentElement, toNode, createElement)
 import Web.DOM.Element as EL
 import Web.DOM.Node (lastChild, firstChild, insertBefore, setTextContent)
@@ -53,25 +55,58 @@ unencryptedExportStyle = "body {font-family: 'DejaVu Sans Mono', monospace;margi
 
 type BlobsList = List (Tuple HexString HexString)
 
-prepareUnencryptedExport :: List Card -> Effect Blob
-prepareUnencryptedExport cardList = do
-  dt <- getCurrentDateTime
-  let date = formatDateTimeToDate dt
-  let time = formatDateTimeToTime dt
-  let styleString    = "<style type=\"text/css\">" <> unencryptedExportStyle <> "</style>"
-  let htmlDocString1 = "<div><header><h1>Your data on Clipperz</h1><h5>Export generated on " <> date <> " at " <> time <> "</h5></header>"
-  let htmlDocString2 = "</div>"
-  let htmlDocContent = prepareUnencryptedContent cardList
-  pure (fromString (styleString <> htmlDocString1 <> htmlDocContent <> htmlDocString2) textHTML)
+data UnencryptedExportVersion = Current | Legacy
+
+prepareUnencryptedExport :: UnencryptedExportVersion -> List Card -> Effect Blob
+prepareUnencryptedExport exportVersion cardList = do
+  currentDateTime <- getCurrentDateTime
+  let date = (formatDateTime "MMM D YYYY" currentDateTime) # (either (\_ -> "") identity)
+  let time = (formatDateTime "HH:mm:ss"   currentDateTime) # (either (\_ -> "") identity)
+
+  let styleString     = "<style type=\"text/css\">" <> unencryptedExportStyle <> "</style>"
+  let htmlHead        = "<head>" <> 
+                          "<title>ClipperzData</title>" <> 
+                          styleString <>
+                          "<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />" <>
+                        "</head>"
+
+  let htmlBodyContent = prepareUnencryptedContent exportVersion cardList
+  let htmlBodyHeader  = "<header>" <>
+                          "<h1>Your data on Clipperz</h1>" <>
+                          "<h5>Export generated on " <> date <> ", at " <> time <> "</h5>" <>
+                          "<div>" <>
+                            "<p>Security warning - This file lists the content of all your cards in a printer-friendly format</p>" <>
+                            "<p>Beware: <span class='warning'>all data are unencrypted!</span> Therefore make sure to properly store and manage this file. We recommend to delete it as soon as it is no longer needed.</p>" <>
+                            "<p>If you are going to print its content on paper, store the printout in a safe and private place!</p>" <>
+                            "<p>And, if you need to access your data when no Internet connection is available, please consider the much safer option of creating an offline copy.</p>" <>
+                          "</div>" <>
+                        "</header>"
+  let htmlBodyFooter  = "<footer>" <>
+                          "<p>This file has been downloaded from <a href='https://clipperz.is'>clipperz.is</a>, a service by Clipperz Srl. - <a href='https://clipperz.is/terms_service/'>Terms of service</a> - <a href='https://clipperz.is/privacy_policy/'>Privacy policy</a></p>" <>
+                        "</footer>"
+  let htmlBody        = "<body><div>" <>
+                          htmlBodyHeader <>
+                          htmlBodyContent <>
+                          htmlBodyFooter <>
+                        "</div></body>"
+
+  pure (fromString ("<html>" <> htmlHead <> htmlBody <> "</html>") textHTML)
 
 formatText :: String -> String
 formatText = (replaceAll (Pattern "<") (Replacement "&lt;")) <<< (replaceAll (Pattern "&") (Replacement "&amp;"))
 
-prepareUnencryptedContent :: List Card -> String
-prepareUnencryptedContent l = 
-  let list = fold $ cardToLi <$> l
-      textareaContent = formatText $ AC.stringify $ encode (CAC.list currentCardCodecVersion) $ fromCard <$> l
-  in "<ul>" <> list <> "</ul><div><textarea class=\'" <> (AC.stringify $ encode cardVersionCodec currentCardVersion) <> "\'>" <> textareaContent <> "</textarea></div>"
+prepareUnencryptedContent :: UnencryptedExportVersion -> List Card -> String
+prepareUnencryptedContent exportVersion l = 
+  "<ul>" <> (fold $ cardToLi <$> l) <> "</ul>" <> 
+  "<div>" <>
+    "<textarea" <>  (case exportVersion of
+                      Current -> " class='" <> (AC.stringify $ encode cardVersionCodec currentCardVersion) <> "'"
+                      _       -> ""
+                    ) <> 
+    ">" <> 
+      cardsUnencryptedExport <> 
+    "</textarea>" <>
+  "</div>"
 
   where
     cardToLi (Card {content: (CardValues {title, tags, fields, notes}), archived, timestamp: _}) =
@@ -80,6 +115,11 @@ prepareUnencryptedContent l =
           fieldsDts = fold $  (\(CardField {name, value, locked}) -> "<dt>" <> (formatText name) <> "</dt><dd class=\"" <> (if locked then "hidden" else "") <> "\">" <> (formatText value) <> "</dd>") <$> fields
           liContent = "<h2>" <> (formatText title) <> "</h2><ul> " <> tagsLis <> "</ul><div><dl>" <> fieldsDts <> "</dl></div><p>" <> (formatText notes) <> "</p>"
       in "<li class=\"" <> archivedTxt <> "\">" <> liContent <> "</li>"
+
+    cardsUnencryptedExport :: String
+    cardsUnencryptedExport = formatText $ AC.stringify $ case exportVersion of
+      Current ->  encode (CAC.list currentCardCodecVersion) $ fromCard <$> l
+      Legacy  -> AC.fromArray $ List.toUnfoldable (encodeDeltaCard <$> l)
 
 getBasicHTML :: ConnectionState -> ExceptT AppError Aff (ProxyResponse Document)
 getBasicHTML connectionState = do
@@ -101,7 +141,7 @@ appendCardsDataInPlace doc blobList requestUserCard = do
   let asNode = toNode doc
   html <- ExceptT $ (note $ UnhandledCondition "TODO") <$> (liftEffect $ lastChild asNode)
   body <- ExceptT $ (note $ UnhandledCondition "TODO") <$> (liftEffect $ lastChild html)
-  fst <-  ExceptT $ (note $ UnhandledCondition "TODO") <$> (liftEffect $ firstChild body)
+  fst  <- ExceptT $ (note $ UnhandledCondition "TODO") <$> (liftEffect $ firstChild body)
 
   scriptElement <- liftEffect $ createElement "script" doc
   liftEffect $ EL.setId offlineDataId scriptElement

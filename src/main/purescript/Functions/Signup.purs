@@ -32,7 +32,7 @@ import Effect.Aff (Aff)
 import Effect.Aff.Class (liftAff)
 import Functions.Card (createCardEntry)
 import Functions.Communication.Users (computeMasterKey)
-import Functions.EncodeDecode (encryptJson, exportCryptoKeyToHex, generateCryptoKeyAesGCM, importCryptoKeyAesGCM)
+import Functions.EncodeDecode (encryptJson, exportCryptoKeyToHex, generateCryptoKeyAesGCM)
 import Functions.Index (encryptIndex)
 import Functions.SRP as SRP
 

@@ -5,8 +5,9 @@ import Concur.React (HTML)
 import Concur.React.DOM (button, div, h1, h3, p, span, text)
 import Concur.React.Props as Props
 import Control.Alt (($>))
+import Functions.Export (UnencryptedExportVersion(..))
 
-data ExportEvent = OfflineCopy | UnencryptedCopy
+data ExportEvent = OfflineCopy | UnencryptedCopy UnencryptedExportVersion
 
 exportView :: Widget HTML ExportEvent
 exportView = div [Props._id "exportPage"] [
@@ -23,6 +24,7 @@ exportView = div [Props._id "exportPage"] [
       , p [] [text "Download a printer-friendly HTML file that lists the content of all your cards."]
       , p [] [text "This same file also contains all your data in JSON format. Please note that file attachments are not included."]
       , p [Props.className "important"] [text "Beware: all data are unencrypted! Therefore make sure to properly store and manage this file."]
-      , button [Props.onClick] [span [] [text "download HTML+JSON"]] $> UnencryptedCopy
+      , button [Props.onClick] [span [] [text "download epsilon HTML+JSON"]] $> UnencryptedCopy Current
+      , button [Props.onClick] [span [] [text "download delta HTML+JSON"]]   $> UnencryptedCopy Legacy
       ]
     ]

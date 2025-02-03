@@ -54,7 +54,7 @@ import Functions.Communication.Cards (deleteCard, getCard, postCard)
 import Functions.Communication.Users (asMaybe, computeRemoteUserCard, deleteUserCard, deleteUserInfo, updateUserPreferences)
 import Functions.DeviceSync (computeDeleteOperations, computeSyncOperations, updateSyncPreference)
 import Functions.Events (eventDelayed, focus)
-import Functions.Export (BlobsList, appendCardsDataInPlace, getBasicHTML, prepareUnencryptedExport, prepareHTMLBlob)
+import Functions.Export (BlobsList, appendCardsDataInPlace, getBasicHTML, prepareHTMLBlob, prepareUnencryptedExport)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, runWidgetStep)
 import Functions.Import (ImportVersion(..), decodeImport, parseImport, readFile)
@@ -373,14 +373,14 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
       # runExceptT
       >>= handleOperationResult state page true White
 
-    (ExportEvent UnencryptedCopy) ->
+    (ExportEvent (UnencryptedCopy exportVersion)) ->
       let page = Main defaultPage
       in do
         let connectionState = {proxy, hashFunc, srpConf, c, p}
         ProxyResponse proxy' (Tuple cardsCache' cardList) <-                       downloadCardsSteps (unwrap index).entries cardsCache connectionState page proxyInfo
-        doc                                               <- runStep (liftEffect $ prepareUnencryptedExport cardList)                                             (WidgetState (spinnerOverlay "Create document"   White) page proxyInfo)
+        doc                                               <- runStep (liftEffect $ prepareUnencryptedExport exportVersion cardList)                                             (WidgetState (spinnerOverlay "Create document"   White) page proxyInfo)
         date                                              <- runStep (liftEffect $ formatDateTimeToDate <$> getCurrentDateTime)                                   (WidgetState (spinnerOverlay ""                  White) page proxyInfo)
-        _                                                 <- runStep (liftEffect $ download doc (date <> "_Clipperz_Export_" <> username <> ".html") "text/html") (WidgetState (spinnerOverlay "Download document" White) page proxyInfo)
+        _                                                 <- runStep (liftEffect $ download doc (date <> "_Clipperz_Export_"   <> username <> ".html") "text/html") (WidgetState (spinnerOverlay "Download document" White) page proxyInfo)
                                   
         pure $ Tuple state{proxy = proxy', cardsCache = cardsCache'} (WidgetState hiddenOverlayInfo page proxyInfo)
       # runExceptT

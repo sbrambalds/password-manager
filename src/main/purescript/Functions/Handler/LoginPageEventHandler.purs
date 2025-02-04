@@ -85,7 +85,6 @@ handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noO
 
 handleLoginPageEvent (GoToSignupEvent cred)              state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Signup emptyDataForm     {username = cred.username, password = cred.password}) proxyInfo))
 
-
 handleLoginPageEvent (GoToCredentialLoginEvent username) state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login emptyLoginFormData {credentials = {username, password: ""}            }) proxyInfo))
 
 -- ========================================================================================================================
@@ -144,7 +143,8 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
 
   proxy''' <- runStep (updateProxy updatedState # liftEffect) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
   
-  focus "mainView" # liftEffect
+  runStep (effectDelayed 510.0 (focus "mainView" # liftEffect) # liftAff) (WidgetState {status: Spinner, color: Black, message: ""} page proxyInfo)
+
   pure $ Tuple
     updatedState { proxy = proxy'''}
     (WidgetState 

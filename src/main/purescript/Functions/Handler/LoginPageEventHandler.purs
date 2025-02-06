@@ -3,7 +3,7 @@ module Functions.Handler.LoginPageEventHandler where
 import Concur.Core (Widget)
 import Concur.React (HTML, affAction)
 import Control.Applicative (pure)
-import Control.Bind (bind, discard, (=<<), (>>=))
+import Control.Bind (bind, discard, (<#>), (=<<), (>>=))
 import Control.Category ((<<<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Except.Trans (ExceptT, runExceptT)
@@ -12,6 +12,7 @@ import Data.Either (Either(..))
 import Data.Function ((#), ($))
 import Data.HexString (hex, toArrayBuffer)
 import Data.Int (fromString)
+import Data.Lens (view)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.Ord ((<))
@@ -24,21 +25,23 @@ import DataModel.Communication.ProtocolError (ProtocolError(..))
 import DataModel.Credentials (Credentials)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy)
+import DataModel.UserVersions.User (_indexReference, _index_reference, _userInfoRef_key, _userInfoRef_reference)
 import DataModel.WidgetState (CardFormInput(..), CardViewState(..), LoginType(..), Page(..), WidgetState(..))
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
+import Functions.Communication.Blobs (getBlob)
 import Functions.Communication.Login (PrepareLoginResult, loginStep1, loginStep2, prepareLogin)
-import Functions.Communication.Users (extractUserInfoReference, getUserInfo)
 import Functions.DeviceSync (computeSyncOperations, getSyncOptionFromLocalStorage)
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
 import Functions.EncodeDecode (importCryptoKeyAesGCM)
 import Functions.Events (effectDelayed, focus)
 import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, runStep, runWidgetStep)
-import Functions.Index (getIndex)
+import Functions.Index (decryptIndex)
 import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, pinFailureCountKey)
 import Functions.SRP (checkM2)
 import Functions.State (getProxyInfoFromProxy, updateProxy)
 import Functions.Timer (activateTimer)
+import Functions.User (decryptUserInfo, extractUserInfoReference)
 import OperationalWidgets.Sync (addPendingOperation, updateConnectionState)
 import Record (merge)
 import Views.AppView (emptyMainPageWidgetState)
@@ -122,9 +125,15 @@ loadHomePageSteps :: AppState -> Page -> ProxyInfo -> Fragment.FragmentState -> 
 loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, masterKey: Just (Tuple _ masterKeyEncodingVersion), userInfoReferences: Just userInfoReferences, syncDataWire} page proxyInfo fragmentState = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
-  ProxyResponse proxy'  userInfo <- runStep       (getUserInfo connectionState                                userInfoReferences (masterKeyEncodingVersion)) (WidgetState {status: Spinner, color: Black, message: "Get user info"      } page proxyInfo)
-  ProxyResponse proxy'' index    <- runStep       (getIndex    connectionState{ proxy = proxy'} (unwrap userInfo).indexReference                           ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)
-  donationLevel                  <- runStep       (computeDonationLevel index userInfo # liftEffect                                                        ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)                                                     
+  ProxyResponse proxy'  userInfo <- runStep       (do 
+                                                      ProxyResponse newProxy blob <- getBlob connectionState (view _userInfoRef_reference userInfoReferences)
+                                                      decryptUserInfo blob (view _userInfoRef_key userInfoReferences) masterKeyEncodingVersion <#> ProxyResponse newProxy
+                                                  )                                                   (WidgetState {status: Spinner, color: Black, message: "Get user info"      } page proxyInfo)
+  ProxyResponse proxy'' index    <- runStep       (do 
+                                                      ProxyResponse newProxy blob <- getBlob connectionState{ proxy = proxy'} (view _index_reference userInfo)
+                                                      decryptIndex (view _indexReference userInfo) blob <#> ProxyResponse newProxy
+                                                  )                                                   (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)
+  donationLevel                  <- runStep       (computeDonationLevel index userInfo # liftEffect ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)                                                     
   
   case (unwrap (unwrap userInfo).userPreferences).automaticLock of
     Right n -> liftEffect (activateTimer n)
@@ -139,7 +148,7 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
 
   syncOperations                 <- runStep       (computeSyncOperations updatedState                                                                     ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
   _                              <- runWidgetStep (updateConnectionState syncDataWire {c, p, srpConf, hashFunc, proxy: DynamicProxy defaultOnlineProxy}   ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
-  _                              <- runWidgetStep (addPendingOperation  syncDataWire syncOperations                                                       ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
+  _                              <- runWidgetStep (addPendingOperation   syncDataWire syncOperations                                                      ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
 
   proxy''' <- runStep (updateProxy updatedState # liftEffect) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
   

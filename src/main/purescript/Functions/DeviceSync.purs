@@ -1,6 +1,6 @@
 module Functions.DeviceSync where
 
-import Control.Alt ((<#>), (<$>))
+import Control.Alt ((<#>))
 import Control.Alternative (pure)
 import Control.Bind (bind, (=<<), (>>=))
 import Control.Category ((<<<))
@@ -11,20 +11,23 @@ import Data.Codec (decode)
 import Data.Either (hush)
 import Data.Eq (eq)
 import Data.Function ((#), ($))
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.HexString (Base(..), HexString, hex, toString)
 import Data.Lens (view)
-import Data.List (List(..), fold, (:))
+import Data.List (List(..), fold, length, (:))
 import Data.Maybe (Maybe(..), isJust)
 import Data.Semigroup ((<>))
+import Data.Show (show)
+import Data.Tuple (Tuple(..))
 import Data.Unit (Unit)
 import DataModel.AppError (AppError(..), InvalidStateError(..))
 import DataModel.AppState (AppState)
 import DataModel.IndexVersions.Index (_card_identifier, _card_reference, _entries, _index_identifier)
-import DataModel.UserVersions.User (_index_reference, _userInfo_identifier, _userInfo_reference, requestUserCardCodec)
+import DataModel.UserVersions.User (_index_reference, _userInfo_identifier, _userInfoRef_reference, requestUserCardCodec)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Functions.Communication.Users (computeRemoteUserCard)
+import Functions.User (computeRemoteUserCard)
 import OperationalWidgets.Sync (SyncOperation(..))
 import Views.DeviceSyncView (EnableSync)
 import Web.HTML (window)
@@ -39,9 +42,9 @@ getSyncOptionFromLocalStorage c =
   (getItem (enableSyncKey c) =<< localStorage =<< window) <#> isJust
 
 updateSyncPreference :: HexString -> EnableSync -> Effect Unit
-updateSyncPreference c = if _
-  then setItem    (enableSyncKey c) "" =<< localStorage =<< window
-  else removeItem (enableSyncKey c)    =<< localStorage =<< window
+updateSyncPreference c = case _ of
+  true  -> setItem    (enableSyncKey c) "" =<< localStorage =<< window
+  false -> removeItem (enableSyncKey c)    =<< localStorage =<< window
 
 computeSyncOperations :: AppState -> ExceptT AppError Aff (List SyncOperation)
 computeSyncOperations {enableSync: false} = pure Nil
@@ -53,7 +56,7 @@ computeSyncOperations {c: Just c, p: Just p, s: Just s, masterKey: Just masterKe
                         <#> ((eq (Just user)) >>> if _ then Nil else (SaveUser user : Nil)) :: Effect (List SyncOperation)
 
   liftEffect $ userOperation
-            <> checkBlobInStorage storage (view _userInfo_reference userInfoReferences)   
+            <> checkBlobInStorage storage (view _userInfoRef_reference userInfoReferences)   
             <> checkBlobInStorage storage (view _index_reference      userInfo)
             <> (fold $ view _entries index <#> (checkBlobInStorage storage <<< view _card_reference))
 
@@ -63,11 +66,14 @@ computeSyncOperations {c: Just c, p: Just p, s: Just s, masterKey: Just masterKe
       
 computeSyncOperations _ = throwError $ InvalidStateError (CorruptedState "State corrupted")
 
-computeDeleteOperations :: AppState -> ExceptT AppError Aff (List SyncOperation)
+computeDeleteOperations :: AppState -> ExceptT AppError Aff (List (Tuple SyncOperation String))
 computeDeleteOperations {c: Just c, userInfoReferences: Just userInfoReferences, userInfo: Just userInfo, index: Just index} =
-  pure  $ DeleteUser c
-        : DeleteBlob (view _userInfo_reference userInfoReferences) (view _userInfo_identifier userInfo)
-        : DeleteBlob (view _index_reference userInfo)              (view _index_identifier index)
-        : ((\entry -> DeleteBlob (view _card_reference entry) (view _card_identifier entry)) <$> view _entries index)
+  pure  $ (mapWithIndex (\i entry -> 
+             Tuple (DeleteBlob (view _card_reference     entry)              (view _card_identifier entry))       ("Delete card " <> show i <> " of " <> show (length $ view _entries index))) (view _entries index))
+       <> ( (Tuple (DeleteBlob (view _index_reference    userInfo)           (view _index_identifier index))       "Delete index")
+          : (Tuple (DeleteBlob (view _userInfoRef_reference userInfoReferences) (view _userInfo_identifier userInfo)) "Delete user info")
+          : (Tuple (DeleteUser c) "Delete user") 
+          : Nil
+          )
       
 computeDeleteOperations _ = throwError $ InvalidStateError (CorruptedState "State corrupted")

@@ -32,6 +32,7 @@ import Functions.State (getProxyInfoFromProxy)
 import OperationalWidgets.Sync (SyncData, SyncOperation, addPendingOperation)
 import Unsafe.Coerce (unsafeCoerce)
 import Views.AppView (appView)
+import Views.DeviceSyncView (EnableSync)
 import Views.LoginFormView (emptyLoginFormData)
 import Views.OverlayView (OverlayColor, OverlayStatus(..))
 
@@ -48,8 +49,11 @@ runStep       step widgetState = ExceptT    $ ((step # runExceptT # affAction) <
 runWidgetStep :: forall a. Widget HTML a -> WidgetState -> ExceptT AppError (Widget HTML) a
 runWidgetStep step widgetState = liftWidget $ ( step                           <* ((affAction <<< delay <<< Milliseconds) =<< (liftEffect operationDelay))) <|> (defaultView widgetState)
 
-syncLocalStorage :: Wire (Widget HTML) SyncData -> List SyncOperation -> WidgetState -> ExceptT AppError (Widget HTML) Unit
-syncLocalStorage syncDataWire syncOperations message = runWidgetStep (addPendingOperation syncDataWire syncOperations) message
+syncLocalStorage :: EnableSync -> Wire (Widget HTML) SyncData -> List SyncOperation -> WidgetState -> ExceptT AppError (Widget HTML) Unit
+syncLocalStorage enableSync syncDataWire syncOperations message = 
+  if enableSync
+  then runWidgetStep (addPendingOperation syncDataWire syncOperations) message
+  else pure unit
 
 defaultView :: forall a. WidgetState -> Widget HTML a
 defaultView widgetState = (unsafeCoerce unit <$ appView widgetState)

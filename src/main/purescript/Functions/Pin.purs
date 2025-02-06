@@ -62,7 +62,7 @@ generateKeyFromPin hashf pin = do
 decryptPassphraseWithPin :: HashFunction -> PIN -> ExceptT AppError Aff Credentials
 decryptPassphraseWithPin hashFunc pin = do  
   storage              <- liftEffect $ window >>= localStorage
-  username             <- ExceptT $ getItem pinUsernameKey storage       <#> note (InvalidStateError (CorruptedSavedPassphrase "user not found in local storage"))       # liftEffect
+  username             <- ExceptT $ getItem pinUsernameKey   storage <#> note (InvalidStateError (CorruptedSavedPassphrase "user not found in local storage"))       # liftEffect
   pinEncryptedPassword <- ExceptT $ getItem pinPassphraseKey storage <#> note (InvalidStateError (CorruptedSavedPassphrase "passphrase not found in local storage")) # liftEffect
   key <- liftAff $ generateKeyFromPin hashFunc pin
   { padding, passphrase } :: PasswordPin <- decryptJson passwordPinCodec key (toArrayBuffer $ hex pinEncryptedPassword) # ExceptT # withExceptT (ProtocolError <<< CryptoError <<< show)
@@ -71,9 +71,9 @@ decryptPassphraseWithPin hashFunc pin = do
 
 deleteCredentials :: Storage -> Effect Unit
 deleteCredentials storage = do
-  removeItem pinUsernameKey       storage
-  removeItem pinPassphraseKey storage
-  removeItem pinFailureCountKey   storage
+  removeItem pinUsernameKey     storage
+  removeItem pinPassphraseKey   storage
+  removeItem pinFailureCountKey storage
 
 encryptedPassphraseByteLength :: Int
 encryptedPassphraseByteLength = 1024

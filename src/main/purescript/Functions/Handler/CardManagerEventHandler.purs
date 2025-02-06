@@ -9,18 +9,16 @@ import Concur.React (HTML, affAction)
 import Control.Alt ((<#>), (<$>))
 import Control.Alternative ((*>), (<*))
 import Control.Applicative (pure)
-import Control.Bind (bind, (=<<), (>>=))
+import Control.Bind (bind, (>>=))
 import Control.Category ((<<<))
 import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
-import Data.Function (flip, (#), ($), (>>>))
+import Data.Function (flip, (#), ($))
 import Data.HexString (fromArrayBuffer)
-import Data.Identifier (computeIdentifier)
-import Data.Lens (set, view)
-import Data.List (List(..), singleton, (:))
+import Data.Lens (view)
+import Data.List (List(..), singleton)
 import Data.Map (delete, insert, lookup)
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Monoid ((<>))
-import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..), fst, uncurry)
 import Data.Unit (unit)
 import DataModel.AppError (AppError(..), InvalidStateError(..))
@@ -28,21 +26,20 @@ import DataModel.AppState (AppState, CardsCache)
 import DataModel.CardVersions.Card as DataModel.CardVersions.Card
 import DataModel.Communication.ConnectionState (ConnectionState)
 import DataModel.FragmentState as Fragment
-import DataModel.IndexVersions.Index (CardEntry(..), Index, _card_identifier, _card_reference, _index_identifier, addToIndex, reference, removeFromIndex)
+import DataModel.IndexVersions.Index (CardEntry(..), Index, _card_identifier, _card_reference, addToIndex, reference, removeFromIndex)
 import DataModel.Proxy (ProxyInfo, ProxyResponse(..))
 import DataModel.SRPVersions.SRP (hashFuncSHA256)
-import DataModel.UserVersions.User (UserInfo(..), _indexReference, _index_reference, _userInfo_identifier, _userInfo_reference)
+import DataModel.UserVersions.User (UserInfo(..))
 import DataModel.WidgetState (CardFormInput(..), CardViewState(..), MainPageWidgetState, Page(..), WidgetState(..), CardManagerState)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Card (appendToTitle, archiveCard, createCardEntry, decryptCard, restoreCard)
 import Functions.Communication.Blobs (getBlob)
 import Functions.Communication.SyncBackend (syncBackend)
-import Functions.Communication.Users (computeMasterKey, computeRemoteUserCard, encryptUserInfo)
 import Functions.Events (blur, eventDelayed, focus, scrollElementIntoView, select)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, syncLocalStorage)
-import Functions.Index (encryptIndex)
+import Functions.Index (computeIndexSyncSteps)
 import IndexFilterView (FilterViewStatus(..))
 import OperationalWidgets.Sync (SyncOperation(..))
 import Views.CardsManagerView (CardManagerEvent(..), NavigateCardsEvent(..))
@@ -244,57 +241,26 @@ getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) page proxyIn
 data CardOperation = Add DataModel.CardVersions.Card.Card | Edit DataModel.CardVersions.Card.Card CardEntry | Delete CardEntry
 
 cardOperationSteps :: CardOperation -> (String -> WidgetState) -> CardManagerState -> AppState -> ExceptT AppError (Widget HTML) (Tuple AppState Page)
-cardOperationSteps cardOperation message cardManagerState state@{index: Just index, masterKey: Just masterKey, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), userInfoReferences: Just userInfoReferences, proxy, hash: hashFunc, srpConf, c: Just c, s: Just s, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
+cardOperationSteps cardOperation message cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, hash: hashFunc, srpConf, c: Just c, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   { saveCardOp, deleteCardOp
   , newCardsCache, newIndex, newCardManagerState} <- operationSpecificData
-  Tuple newEncryptedIndex    newIndexReference    <- runStep (encryptIndex     newIndex hashFunc         # liftAff)  (message "Compute Encrypted Data")
-  newUserInfo                                     <- runStep ((\id -> ( set _userInfo_identifier id >>>
-                                                                        set _indexReference newIndexReference
-                                                                      ) userInfo
-                                                              ) <$> (computeIdentifier                   # liftAff)) (message "Compute Encrypted Data")
-  Tuple newEncryptedUserInfo newUserInfoReference <- runStep (encryptUserInfo  newUserInfo hashFunc      # liftAff)  (message "Compute Encrypted Data")
-  newUser                                         <- runStep (computeRemoteUserCard srpConf c p s (fst masterKey) =<<
-                                                             (computeMasterKey newUserInfoReference p    # liftAff)) (message "Compute Encrypted Data")
+  { updateIndexOp
+  , newUserInfo, newUserInfoReference, newMasterKey } <- runStep (computeIndexSyncSteps state newIndex)    (message "Compute Encrypted Data")
 
-  let syncOperations =  ( saveCardOp
-                       <> ( Tuple (SaveBlob (_index_reference  # flip view newUserInfo)
-                                            (_index_identifier # flip view newIndex)
-                                            (newEncryptedIndex # fromArrayBuffer)
-                                  )
-                                  "Save Index"
-                          )
-                        : ( Tuple (SaveBlob (_userInfo_reference  # flip view newUserInfoReference)
-                                            (_userInfo_identifier # flip view newUserInfo)
-                                            (newEncryptedUserInfo # fromArrayBuffer)
-                                  )
-                                  "Save User Info"
-                          )
-                        : ( Tuple (SaveUser    newUser)                                             
-                                  "Update User Info"
-                          )
-                        : ( Tuple (DeleteBlob (_userInfo_reference  # flip view userInfoReferences)
-                                              (_userInfo_identifier # flip view userInfo)
-                                  )
-                                  "Delete old Index"
-                          )
-                        : ( Tuple (DeleteBlob (_index_reference  # flip view userInfo)
-                                              (_index_identifier # flip view index)
-                                  )
-                                  "Delete old User Info"
-                          )
-                        :   Nil
+  let syncOperations = (  saveCardOp
+                       <> updateIndexOp
                        <> deleteCardOp
-                        )
+                       )
 
-  _        <- syncLocalStorage syncDataWire    (syncOperations <#> fst) (message "Sync Data to Local Storage")
-  newProxy <- syncBackend      connectionState  syncOperations           message
+  newProxy <- syncBackend      connectionState          syncOperations           message
+  _        <- syncLocalStorage enableSync syncDataWire (syncOperations <#> fst) (message "Sync Data to Local Storage")
 
   pure (Tuple 
         (state  { proxy = newProxy, cardsCache = newCardsCache
                 , index = Just newIndex, userInfo = Just newUserInfo, userInfoReferences = Just newUserInfoReference
-                , masterKey = Just (unwrap newUser).masterKey
+                , masterKey = Just newMasterKey
                 })
         (Main { index:            newIndex
               , credentials:     {username, password}

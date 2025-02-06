@@ -31,10 +31,10 @@ import DataModel.UserVersions.UserCodecs (fromUserInfo)
 import Effect.Aff (Aff)
 import Effect.Aff.Class (liftAff)
 import Functions.Card (createCardEntry)
-import Functions.Communication.Users (computeMasterKey)
 import Functions.EncodeDecode (encryptJson, exportCryptoKeyToHex, generateCryptoKeyAesGCM)
 import Functions.Index (encryptIndex)
 import Functions.SRP as SRP
+import Functions.User (computeMasterKey)
 
 prepareCards :: SRPConf -> List Card -> Aff (List (Tuple CardEntry {cardContent :: HexString, cardReference :: HexString, cardIdentifier :: HexString}))
 prepareCards srpConf cards = sequence $ cards <#> (\card -> do
@@ -61,7 +61,6 @@ prepareSignupParameters srpConf form = runExceptT $ do
   userInfoHash         :: ArrayBuffer <- liftAff $ srpConf.hash (encryptedUserInfo : Nil)
 
   userInfoCryptoKeyHex :: HexString   <- liftAff $ exportCryptoKeyToHex userInfoCryptoKey
-  -- masterPassword       :: CryptoKey   <- liftAff $ importCryptoKeyAesGCM pAb
   masterKey            :: MasterKey   <- liftAff $ computeMasterKey {reference: fromArrayBuffer userInfoHash, key: userInfoCryptoKeyHex} (fromArrayBuffer pAb)
 
   pure  { user:

@@ -150,8 +150,11 @@ prepareUserInfo indexReference userPreferences = do
 
 -- ==================================================================
 
-_userInfo_reference :: Lens' UserInfoReferences HexString
-_userInfo_reference = prop (Proxy.Proxy :: _ "reference")
+_userInfoRef_reference :: Lens' UserInfoReferences HexString
+_userInfoRef_reference = prop (Proxy.Proxy :: _ "reference")
+
+_userInfoRef_key :: Lens' UserInfoReferences HexString
+_userInfoRef_key = prop (Proxy.Proxy :: _ "key")
 
 _indexReference :: Lens' UserInfo IndexReference
 _indexReference = _Newtype <<< prop (Proxy.Proxy :: _ "indexReference")
@@ -161,3 +164,6 @@ _userInfo_identifier = _Newtype <<< prop (Proxy.Proxy :: _ "identifier")
 
 _index_reference :: Lens' UserInfo HexString
 _index_reference = _indexReference <<< _Newtype <<< prop (Proxy.Proxy :: _ "reference")
+
+_userPreferences :: Lens' UserInfo UserPreferences
+_userPreferences = _Newtype <<< prop (Proxy.Proxy :: _ "userPreferences")

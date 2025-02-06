@@ -56,15 +56,14 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, 
       do
         let page = Main defaultPage { donationLevel = DonationOk }
 
-        newUserInfo                     <- runStep ((\now -> pure $ UserInfo ((unwrap userInfo) {donationInfo = do
-                                                      nextDonationReminder <- adjust days now
-                                                      pure {dateOfLastDonation: now, nextDonationReminder}})
-                                                    ) =<< liftEffect nowDateTime)                        (spinnerWidgetState page "Update user info")
-        newDonationLevel                <- runStep (computeDonationLevel index newUserInfo # liftEffect) (spinnerWidgetState page "Update user info")
+        newUserInfo                            <- ((\now -> pure $ UserInfo ((unwrap userInfo) {donationInfo = do
+                                                    nextDonationReminder <- adjust days now
+                                                    pure {dateOfLastDonation: now, nextDonationReminder}})
+                                                  ) =<< liftEffect nowDateTime)                         # (spinnerWidgetState page "Update user info"        # runStep)
+        newDonationLevel                       <- (computeDonationLevel index newUserInfo # liftEffect) # (spinnerWidgetState page "Update user info"        # runStep)
         
         { updateUserInfoOp
-        , newMasterKey, newUserInfoReference }    <- runStep (computeUserInfoSyncSteps state newUserInfo) (spinnerWidgetState page "Compute Sync Operations")
-
+        , newMasterKey, newUserInfoReference } <- (computeUserInfoSyncSteps state newUserInfo)          # (spinnerWidgetState page "Compute Sync Operations" # runStep)
 
         newProxy <- syncBackend      connectionState          updateUserInfoOp          (spinnerWidgetState page)
         _        <- syncLocalStorage enableSync syncDataWire (updateUserInfoOp <#> fst) (spinnerWidgetState page "Sync Data to Local Storage")

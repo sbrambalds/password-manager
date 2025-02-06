@@ -58,8 +58,8 @@ handleLoginPageEvent :: LoginPageEvent -> AppState -> ProxyInfo -> Fragment.Frag
 
 handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
   do
-    prepareLoginResult <- runStep (prepareLogin srpConf cred) (WidgetState (spinnerOverlay "Prepare login" Black) initialPage proxyInfo)
-    res                <- loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
+    prepareLoginResult <- (prepareLogin srpConf cred) # (message "Prepare login" # runStep)
+    res                <-  loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
     pure res
   
   # runExceptT 
@@ -67,13 +67,14 @@ handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
 
   where 
     initialPage = (Login emptyLoginFormData {credentials = cred})
+    message s   = WidgetState (spinnerOverlay s Black) initialPage proxyInfo
 
 
 handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState = do
   do
-    cred               <- runStep (decryptPassphraseWithPin hash pin) (WidgetState (spinnerOverlay "Decrypt with PIN" Black) initialPage proxyInfo)
-    prepareLoginResult <- runStep (prepareLogin srpConf cred)         (WidgetState (spinnerOverlay "Prepare login"    Black) initialPage proxyInfo)
-    res                <- loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
+    cred               <- (decryptPassphraseWithPin hash pin) # (message "Decrypt with PIN" # runStep)
+    prepareLoginResult <- (prepareLogin srpConf cred)         # (message "Prepare login"    # runStep)
+    res                <-  loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
     pure res
   
   # runExceptT
@@ -83,6 +84,7 @@ handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmen
   where
     initialPage = Login emptyLoginFormData {pin = pin, loginType = PinLogin}
     emptyPage   = Login emptyLoginFormData {loginType = PinLogin}
+    message s   = WidgetState (spinnerOverlay s Black) initialPage proxyInfo
 
 handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login loginFormData)                                                           proxyInfo))
 
@@ -96,17 +98,17 @@ loginSteps :: Credentials -> AppState -> Fragment.FragmentState -> Page -> Proxy
 loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyInfo prepareLoginResult = do
   let connectionState = {proxy, hashFunc, srpConf, c : hex "", p: hex ""}
 
-  ProxyResponse proxy'   loginStep1Result <- runStep (loginStep1         connectionState                 prepareLoginResult.c                                      ) (WidgetState {status: Spinner, color: Black, message: "SRP step 1"   } page proxyInfo)
-  ProxyResponse proxy''  loginStep2Result <- runStep (loginStep2         connectionState{proxy = proxy'} prepareLoginResult.c prepareLoginResult.p loginStep1Result) (WidgetState {status: Spinner, color: Black, message: "SRP step 2"   } page proxyInfo)
-  _                                       <- runStep ((liftAff $ checkM2 srpConf loginStep1Result.aa loginStep2Result.m1 loginStep2Result.kk (toArrayBuffer loginStep2Result.m2)) >>= (\result -> 
-                                                        if result
-                                                        then pure         unit
-                                                        else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
-                                                     ))                                                                                                              (WidgetState {status: Spinner, color: Black, message: "Validate user"} page proxyInfo)
-  userInfoReferences                      <- runStep ( extractUserInfoReference loginStep2Result.masterKey 
-                                                       =<< 
-                                                      (importCryptoKeyAesGCM (prepareLoginResult.p # toArrayBuffer) # liftAff)
-                                                     )                                                                                                               (WidgetState {status: Spinner, color: Black, message: "Validate user"} page proxyInfo)
+  ProxyResponse proxy'   loginStep1Result <- (loginStep1         connectionState                 prepareLoginResult.c                                      ) # (message "SRP step 1" # runStep)
+  ProxyResponse proxy''  loginStep2Result <- (loginStep2         connectionState{proxy = proxy'} prepareLoginResult.c prepareLoginResult.p loginStep1Result) # (message "SRP step 2" # runStep)
+  _                                       <- ((liftAff $ checkM2 srpConf loginStep1Result.aa loginStep2Result.m1 loginStep2Result.kk (toArrayBuffer loginStep2Result.m2)) >>= (\result -> 
+                                                if result
+                                                then pure         unit
+                                                else throwError $ ProtocolError (SRPError "Client M2 doesn't match with server M2")
+                                              ))                                                                                                             # (message "Validate user" # runStep)
+  userInfoReferences                      <- (  extractUserInfoReference loginStep2Result.masterKey 
+                                                =<< 
+                                                (importCryptoKeyAesGCM (prepareLoginResult.p # toArrayBuffer) # liftAff)
+                                              )                                                                                                              # (message "Validate user" # runStep)
   let stateUpdate = { masterKey:          Just loginStep2Result.masterKey 
                     , userInfoReferences: Just userInfoReferences
                     , username:           Just cred.username
@@ -120,20 +122,23 @@ loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyI
 
   pure $ res
 
+  where 
+    message s = WidgetState {status: Spinner, color: Black, message: s} page proxyInfo
+
 loadHomePageSteps :: AppState -> Page -> ProxyInfo -> Fragment.FragmentState -> ExceptT AppError (Widget HTML) OperationState
 
 loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, masterKey: Just (Tuple _ masterKeyEncodingVersion), userInfoReferences: Just userInfoReferences, syncDataWire} page proxyInfo fragmentState = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
-  ProxyResponse proxy'  userInfo <- runStep       (do 
-                                                      ProxyResponse newProxy blob <- getBlob connectionState (view _userInfoRef_reference userInfoReferences)
-                                                      decryptUserInfo blob (view _userInfoRef_key userInfoReferences) masterKeyEncodingVersion <#> ProxyResponse newProxy
-                                                  )                                                   (WidgetState {status: Spinner, color: Black, message: "Get user info"      } page proxyInfo)
-  ProxyResponse proxy'' index    <- runStep       (do 
-                                                      ProxyResponse newProxy blob <- getBlob connectionState{ proxy = proxy'} (view _index_reference userInfo)
-                                                      decryptIndex (view _indexReference userInfo) blob <#> ProxyResponse newProxy
-                                                  )                                                   (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)
-  donationLevel                  <- runStep       (computeDonationLevel index userInfo # liftEffect ) (WidgetState {status: Spinner, color: Black, message: "Get index"          } page proxyInfo)                                                     
+  ProxyResponse proxy'  userInfo <- (do 
+                                        ProxyResponse newProxy blob <- getBlob connectionState (view _userInfoRef_reference userInfoReferences)
+                                        decryptUserInfo blob (view _userInfoRef_key userInfoReferences) masterKeyEncodingVersion <#> ProxyResponse newProxy
+                                    ) # (message "Get user info" # runStep)
+  ProxyResponse proxy'' index    <- (do 
+                                        ProxyResponse newProxy blob <- getBlob connectionState{ proxy = proxy'} (view _index_reference userInfo)
+                                        decryptIndex (view _indexReference userInfo) blob <#> ProxyResponse newProxy
+                                    ) # (message "Get index"     # runStep)
+  donationLevel                  <- (computeDonationLevel index userInfo # liftEffect ) # (message "Compute donation level" # runStep)                                                     
   
   case (unwrap (unwrap userInfo).userPreferences).automaticLock of
     Right n -> liftEffect (activateTimer n)
@@ -142,17 +147,17 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
   let cardViewState = case fragmentState of
                         Fragment.AddCard card -> CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)
                         _                     -> NoCard
-  enableSync                     <- runStep      (getSyncOptionFromLocalStorage c # liftEffect                                                            ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
+  enableSync     <- (getSyncOptionFromLocalStorage c # liftEffect) # (message "Compute data to sync" # runStep)
 
   let updatedState = state {proxy = proxy'', index = Just index, userInfo = Just userInfo, donationLevel = Just donationLevel, enableSync = enableSync}
 
-  syncOperations                 <- runStep       (computeSyncOperations updatedState                                                                     ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
-  _                              <- runWidgetStep (updateConnectionState syncDataWire {c, p, srpConf, hashFunc, proxy: DynamicProxy defaultOnlineProxy}   ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
-  _                              <- runWidgetStep (addPendingOperation   syncDataWire syncOperations                                                      ) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
+  syncOperations <- (computeSyncOperations updatedState                                                                  ) # (message "Compute data to sync" # runStep)
+  _              <- (updateConnectionState syncDataWire {c, p, srpConf, hashFunc, proxy: DynamicProxy defaultOnlineProxy}) # (message "Compute data to sync" # runWidgetStep)
+  _              <- (addPendingOperation   syncDataWire syncOperations                                                   ) # (message "Compute data to sync" # runWidgetStep)
 
-  proxy''' <- runStep (updateProxy updatedState # liftEffect) (WidgetState {status: Spinner, color: Black, message: "Compute data to sync"} page proxyInfo)
+  proxy''' <- (updateProxy updatedState # liftEffect) # (message "Compute data to sync" # runStep)
   
-  runStep (effectDelayed 510.0 (focus "mainView" # liftEffect) # liftAff) (WidgetState {status: Spinner, color: Black, message: ""} page proxyInfo)
+  (effectDelayed 510.0 (focus "mainView" # liftEffect) # liftAff) # (message "" # runStep)
 
   pure $ Tuple
     updatedState { proxy = proxy'''}
@@ -163,6 +168,9 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
         _               -> (Main emptyMainPageWidgetState { index = index, cardManagerState = cardManagerInitialState { cardViewState = cardViewState }, donationLevel = donationLevel, syncDataWire = Just syncDataWire, enableSync = enableSync })
       (getProxyInfoFromProxy proxy''')
     )
+
+  where
+    message s = WidgetState {status: Spinner, color: Black, message: s} page proxyInfo
 
 loadHomePageSteps _ _ _ _  = do
   throwError (InvalidStateError $ CorruptedState "")

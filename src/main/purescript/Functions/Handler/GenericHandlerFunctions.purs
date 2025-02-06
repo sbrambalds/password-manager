@@ -43,16 +43,16 @@ foreign import _operationDelay :: Unit -> Effect Number
 operationDelay :: Effect Number 
 operationDelay = _operationDelay unit
 
-runStep :: forall a. ExceptT AppError Aff a -> WidgetState -> ExceptT AppError (Widget HTML) a
-runStep       step widgetState = ExceptT    $ ((step # runExceptT # affAction) <* ((affAction <<< delay <<< Milliseconds) =<< (liftEffect operationDelay))) <|> (defaultView widgetState)
+runStep :: forall a. WidgetState -> ExceptT AppError Aff a -> ExceptT AppError (Widget HTML) a
+runStep widgetState step = ExceptT $ ((step # runExceptT # affAction) <* ((affAction <<< delay <<< Milliseconds) =<< (liftEffect operationDelay))) <|> (defaultView widgetState)
 
-runWidgetStep :: forall a. Widget HTML a -> WidgetState -> ExceptT AppError (Widget HTML) a
-runWidgetStep step widgetState = liftWidget $ ( step                           <* ((affAction <<< delay <<< Milliseconds) =<< (liftEffect operationDelay))) <|> (defaultView widgetState)
+runWidgetStep :: forall a. WidgetState -> Widget HTML a -> ExceptT AppError (Widget HTML) a
+runWidgetStep widgetState step = liftWidget $ ( step                           <* ((affAction <<< delay <<< Milliseconds) =<< (liftEffect operationDelay))) <|> (defaultView widgetState)
 
 syncLocalStorage :: EnableSync -> Wire (Widget HTML) SyncData -> List SyncOperation -> WidgetState -> ExceptT AppError (Widget HTML) Unit
 syncLocalStorage enableSync syncDataWire syncOperations message = 
   if enableSync
-  then runWidgetStep (addPendingOperation syncDataWire syncOperations) message
+  then runWidgetStep message (addPendingOperation syncDataWire syncOperations)
   else pure unit
 
 defaultView :: forall a. WidgetState -> Widget HTML a

@@ -27,8 +27,8 @@ handleSignupPageEvent :: SignupPageEvent -> AppState -> ProxyInfo -> Fragment.Fr
 
 handleSignupPageEvent (SignupEvent cred) state@{proxy, hash, srpConf} proxyInfo fragmentState = 
   do
-    ProxyResponse newProxy signupResult <- runStep (signupUser {proxy, hashFunc: hash, srpConf, c: hex "", p: hex ""} cred) (WidgetState (spinnerOverlay "registering" Black) initialPage proxyInfo)
-    res                                 <- loginSteps cred (state {proxy = newProxy}) fragmentState initialPage proxyInfo signupResult
+    ProxyResponse newProxy signupResult <- (signupUser {proxy, hashFunc: hash, srpConf, c: hex "", p: hex ""} cred) # (WidgetState (spinnerOverlay "registering" Black) initialPage proxyInfo # runStep)
+    res                                 <-  loginSteps cred (state {proxy = newProxy}) fragmentState initialPage proxyInfo signupResult
     pure res
   
   # runExceptT 

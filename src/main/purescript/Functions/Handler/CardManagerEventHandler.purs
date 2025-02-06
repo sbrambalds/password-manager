@@ -233,10 +233,14 @@ getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) page proxyIn
   case cardFromCache of
     Just card -> pure $ ProxyResponse connectionState.proxy (Tuple cardsCache card)
     Nothing   -> do
-      ProxyResponse proxy' blob <- runStep (getBlob connectionState (reference cardEntry)) (WidgetState (spinnerOverlay "Get card"     Black) page proxyInfo)  
-      card                      <- runStep (decryptCard blob (entry.cardReference))        (WidgetState (spinnerOverlay "Decrypt card" Black) page proxyInfo)
-      let updatedCardsCache      =          insert (reference cardEntry) card cardsCache
+      ProxyResponse proxy' blob <- (getBlob connectionState (reference cardEntry)) # (message "Get card"     # runStep)  
+      card                      <- (decryptCard blob (entry.cardReference))        # (message "Decrypt card" # runStep)
+      let updatedCardsCache      =  insert (reference cardEntry) card cardsCache
       pure $ ProxyResponse proxy' (Tuple updatedCardsCache card)
+  
+  where
+    message :: String -> WidgetState
+    message messageText = WidgetState (spinnerOverlay messageText Black) page proxyInfo
 
 data CardOperation = Add DataModel.CardVersions.Card.Card | Edit DataModel.CardVersions.Card.Card CardEntry | Delete CardEntry
 
@@ -245,9 +249,9 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   { saveCardOp, deleteCardOp
-  , newCardsCache, newIndex, newCardManagerState} <- operationSpecificData
+  , newCardsCache, newIndex, newCardManagerState}     <-  operationSpecificData
   { updateIndexOp
-  , newUserInfo, newUserInfoReference, newMasterKey } <- runStep (computeIndexSyncSteps state newIndex)    (message "Compute Encrypted Data")
+  , newUserInfo, newUserInfoReference, newMasterKey } <- (computeIndexSyncSteps state newIndex) # (message "Compute Encrypted Data" # runStep)
 
   let syncOperations = (  saveCardOp
                        <> updateIndexOp
@@ -280,8 +284,8 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
     operationSpecificData :: ExceptT AppError (Widget HTML) { saveCardOp :: List (Tuple SyncOperation String), deleteCardOp :: List (Tuple SyncOperation String), newCardsCache :: CardsCache, newIndex :: Index, newCardManagerState :: CardManagerState }
     operationSpecificData = case cardOperation of
       Add newCard -> do
-        Tuple newEncryptedCard newCardEntry <- runStep (createCardEntry  hashFuncSHA256 newCard # liftAff) (message "Compute Encrypted Data")
-        newIndex                            <- runStep (addToIndex       newCardEntry   index   # liftAff) (message "Compute Encrypted Data")
+        Tuple newEncryptedCard newCardEntry <- (createCardEntry  hashFuncSHA256 newCard # liftAff) # (message "Compute Encrypted Data" # runStep)
+        newIndex                            <- (addToIndex       newCardEntry   index   # liftAff) # (message "Compute Encrypted Data" # runStep)
 
         pure $ {
           saveCardOp: singleton ( Tuple (SaveBlob (_card_reference  # flip view newCardEntry)
@@ -297,9 +301,9 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
         }
       
       Edit updatedCard oldCardEntry -> do
-          Tuple newEncryptedCard newCardEntry <- runStep (createCardEntry hashFuncSHA256 updatedCard # liftAff) (message "Compute Encrypted Data")
-          newIndex                            <- runStep (( addToIndex       newCardEntry index >>=
-                                                            removeFromIndex oldCardEntry)            # liftAff) (message "Compute Encrypted Data")
+          Tuple newEncryptedCard newCardEntry <- (createCardEntry hashFuncSHA256 updatedCard # liftAff) # (message "Compute Encrypted Data" # runStep)
+          newIndex                            <- (( addToIndex       newCardEntry index >>=
+                                                    removeFromIndex oldCardEntry)            # liftAff) # (message "Compute Encrypted Data" # runStep)
 
           pure $ {
             saveCardOp:   singleton ( Tuple (SaveBlob (_card_reference  # flip view newCardEntry)
@@ -321,7 +325,7 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
           }
       
       Delete cardEntry -> do
-        newIndex <- runStep ((removeFromIndex cardEntry index) # liftAff) (message "Compute Encrypted Data")
+        newIndex <- ((removeFromIndex cardEntry index) # liftAff) # (message "Compute Encrypted Data" # runStep)
 
         pure $ {
             saveCardOp:             Nil

@@ -5,22 +5,20 @@ div.page {
         color: $main-text-color;
     }
 
-	div.loginButton, div.signupButton {
-		display: flex;
-		background-color: white;
-		width: 100%;
+    div.loginButton, div.signupButton {
+        display: flex;
+        background-color: white;
+        width: 100%;
 
-		button {
-			margin-top: 0px;
+        button {
+            margin-top: 0px;
 
-			&:hover {
-				background-color: $core-alternate-color;
-				color: $core-alternate-text-color;
-			}
-		}
-
-
-	} 
+            &:hover {
+                background-color: $core-alternate-color;
+                color: $core-alternate-text-color;
+            }
+        }
+    }
 
     &.signup {
         background-color: $core-alternate-color;
@@ -164,6 +162,30 @@ div.page {
 					}
 				}
 			}
+
+            & > button.signup, & > button.login {
+                border: 0;
+            }
+
+            & > button.signup {
+                background-color: $core-alternate-color;
+                color: $core-alternate-text-color; 
+
+                &:hover {
+                    color: $core-alternate-color;
+                    background-color: $core-alternate-text-color;
+                }
+            }
+            
+            & > button.login {
+                background-color: $main-color;
+                color: $main-text-color; 
+                
+                &:hover {
+                    color: $main-color;
+                    background-color: $main-text-color; 
+                }
+            }
         }
 		
 		div button.login, div button.signup {

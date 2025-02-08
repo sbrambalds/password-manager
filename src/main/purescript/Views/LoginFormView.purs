@@ -96,8 +96,8 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
                 ] [span [] [text "login"]]
       ])
       <|> 
-      (button [Props.onClick] [
-        text "sign up"
+      (button [Props.onClick, Props.className "signup"] [
+        span [] [text "sign up"]
       ] *> (focus "signupUsernameInput" # liftEffect) $> (GoToSignupEvent credentials)
       )
     )

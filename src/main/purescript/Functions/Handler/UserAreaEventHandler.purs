@@ -195,7 +195,7 @@ handleUserAreaEvent userAreaEvent cardManagerState userAreaState state@{proxy, s
         pure (Tuple 
           (state  { proxy = newProxy
                   , c = Just (unwrap newUserCard).c, p = Just newP, s = Just (unwrap newUserCard).s
-                  , masterKey = Just masterKey
+                  , masterKey = Just (unwrap newUserCard).masterKey
                   , password  = Just newPassword
                   , pinExists = false
                   }

@@ -25,9 +25,9 @@ import Test.Debug (debugState)
 import Views.CardsManagerView (CardManagerEvent, cardManagerInitialState, cardsManagerView)
 import Views.Components (footerComponent, proxyInfoComponent)
 import Views.DonationViews (DonationPageEvent, donationPage)
-import Views.LoginFormView (LoginPageEvent, emptyLoginFormData, loginPage)
+import Views.LoginFormView (LoginPageEvent, loginPage)
 import Views.OverlayView (overlay)
-import Views.SignupFormView (SignupPageEvent, emptyDataForm, signupFormView)
+import Views.SignupFormView (SignupPageEvent, signupFormView)
 import Views.UserAreaView (UserAreaEvent, userAreaInitialState, userAreaView)
 
 emptyMainPageWidgetState :: MainPageWidgetState
@@ -40,7 +40,7 @@ data PageEvent = LoginPageEvent           LoginPageEvent
                | DonationPageEvent        DonationPageEvent
 
 appView :: WidgetState -> Widget HTML PageEvent
-appView widgetState@(WidgetState overlayInfo page proxyInfo)  =
+appView widgetState@(WidgetState overlayInfo (Tuple page pagesState) proxyInfo)  =
   appPages <> debugState widgetState
   <|>
   overlay overlayInfo
@@ -48,34 +48,34 @@ appView widgetState@(WidgetState overlayInfo page proxyInfo)  =
   where 
     appPages :: Widget HTML PageEvent
     appPages = div [Props.className "mainDiv"] [
-      headerPage proxyInfo page (Loading Nothing) []
-    , SignupPageEvent <$> headerPage proxyInfo page (Signup emptyDataForm) [ do
-        let credentials = case page of
-                            Signup credentials' -> credentials'
-                            _                   -> emptyDataForm
-        
-        (signupFormView credentials)
+      headerPage proxyInfo page Loading []
+    , SignupPageEvent <$> headerPage proxyInfo page Signup [
+        signupFormView pagesState.signup
       ]
-    , LoginPageEvent <$> headerPage proxyInfo page (Login emptyLoginFormData) [
-        loginPage $ case page of
-          Login loginFormData -> loginFormData
-          _                   -> emptyLoginFormData
+    , LoginPageEvent <$> headerPage proxyInfo page Login [
+        loginPage pagesState.login
       ]
-    , DonationPageEvent <$> headerPage proxyInfo page (Donation DonationOk) [ do
-        let donationLevel = case page of
-                              Donation donationLevel' -> donationLevel'
-                              _                       -> DonationOk
-        donationPage donationLevel
-
+    , DonationPageEvent <$> headerPage proxyInfo page Donation [
+        donationPage pagesState.donation
     ]
-    , div [Props.classList (Just <$> ["page", "main", show $ location (Main emptyMainPageWidgetState) page])] [ do
-        let Tuple {index, userAreaState, credentials, donationInfo, pinExists, enableSync, cardManagerState, userPreferences, donationLevel, syncDataWire} enableShortcuts = case page of
-                                        Main homePageWidgetState' -> Tuple homePageWidgetState'     true
-                                        _                         -> Tuple emptyMainPageWidgetState false
-        
+    , div [Props.classList (Just <$> ["page", "main", show $ location Main page])] [
+        let enableShortcuts = case page of
+                                Main -> true
+                                _    -> false
+            { index
+            , userAreaState
+            , credentials
+            , donationInfo
+            , pinExists
+            , enableSync
+            , cardManagerState
+            , userPreferences
+            , donationLevel
+            , syncDataWire} = pagesState.main
+        in
         div [Props._id "homePage"] [
           ( MainPageCardManagerEvent                         # uncurry) <$> cardsManagerView cardManagerState index (unwrap userPreferences).passwordGeneratorSettings donationLevel proxyInfo enableShortcuts enableSync syncDataWire
-        , ((MainPageUserAreaEvent # flip $ cardManagerState) # uncurry) <$> userAreaView     userAreaState userPreferences credentials donationInfo proxyInfo pinExists enableSync syncDataWire
+        , ((MainPageUserAreaEvent # flip $ cardManagerState) # uncurry) <$> userAreaView     userAreaState userPreferences credentials                                 donationInfo  proxyInfo pinExists       enableSync syncDataWire
         ] 
       ]
     ]
@@ -88,25 +88,25 @@ instance showPagePosition :: Show PagePosition where
 
 location :: Page -> Page -> PagePosition
 location referencePage currentPage = case referencePage, currentPage of
-  Loading  _, Loading  _ -> CenterPosition
-  Login    _, Login    _ -> CenterPosition
-  Signup   _, Signup   _ -> CenterPosition
-  Main     _, Main     _ -> CenterPosition
-  Donation _, Donation _ -> CenterPosition
+  Loading , Loading  -> CenterPosition
+  Login   , Login    -> CenterPosition
+  Signup  , Signup   -> CenterPosition
+  Main    , Main     -> CenterPosition
+  Donation, Donation -> CenterPosition
 
-  Loading  _, _          -> LeftPosition
-  Signup   _, Login    _ -> LeftPosition
-  Login    _, Donation _ -> LeftPosition
-  Signup   _, Donation _ -> LeftPosition
-  _,          Main     _ -> LeftPosition
-  _,          _          -> RightPosition
+  Loading , _        -> LeftPosition
+  Signup  , Login    -> LeftPosition
+  Login   , Donation -> LeftPosition
+  Signup  , Donation -> LeftPosition
+  _,        Main     -> LeftPosition
+  _,        _        -> RightPosition
 
 pageClassName :: Page -> String
-pageClassName (Loading _)  = "loading"
-pageClassName (Login _)    = "login"
-pageClassName (Signup _)   = "signup"
-pageClassName (Main _)     = "main"
-pageClassName (Donation _) = "donation"
+pageClassName Loading  = "loading"
+pageClassName Login    = "login"
+pageClassName Signup   = "signup"
+pageClassName Main     = "main"
+pageClassName Donation = "donation"
 
 headerPage :: forall a. ProxyInfo -> Page -> Page -> Array (Widget HTML a) -> Widget HTML a
 headerPage proxyInfo currentPage page innerContent = do

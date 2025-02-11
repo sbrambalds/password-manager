@@ -12,7 +12,7 @@ import Data.Either (Either(..))
 import Data.Function ((#), ($))
 import Data.HexString (hex, toArrayBuffer)
 import Data.Int (fromString)
-import Data.Lens (view)
+import Data.Lens (set, view)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.Ord ((<))
@@ -26,7 +26,7 @@ import DataModel.Credentials (Credentials)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (Proxy(..), ProxyInfo, ProxyResponse(..), defaultOnlineProxy)
 import DataModel.UserVersions.User (_indexReference, _index_reference, _userInfoRef_key, _userInfoRef_reference)
-import DataModel.WidgetState (CardFormInput(..), CardViewState(..), LoginType(..), Page(..), WidgetState(..))
+import DataModel.WidgetState (CardFormInput(..), CardViewState(..), LoginType(..), Page(..), PagesState, WidgetState(..), _donationPagesState, _mainPagesState)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Communication.Blobs (getBlob)
@@ -35,7 +35,7 @@ import Functions.DeviceSync (computeSyncOperations, getSyncOptionFromLocalStorag
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
 import Functions.EncodeDecode (importCryptoKeyAesGCM)
 import Functions.Events (effectDelayed, focus)
-import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, runStep, runWidgetStep)
+import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, pagesInfoWithLogin, pagesInfoWithSignup, runStep, runWidgetStep)
 import Functions.Index (decryptIndex)
 import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, pinFailureCountKey)
 import Functions.SRP (checkM2)
@@ -59,43 +59,43 @@ handleLoginPageEvent :: LoginPageEvent -> AppState -> ProxyInfo -> Fragment.Frag
 handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
   do
     prepareLoginResult <- (prepareLogin srpConf cred) # (message "Prepare login" # runStep)
-    res                <-  loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
+    res                <-  loginSteps cred state fragmentState pagesInfo proxyInfo prepareLoginResult
     pure res
   
   # runExceptT 
-  >>= handleOperationResult state initialPage true Black
+  >>= handleOperationResult state pagesInfo true Black
 
   where 
-    initialPage = (Login emptyLoginFormData {credentials = cred})
-    message s   = WidgetState (spinnerOverlay s Black) initialPage proxyInfo
+    pagesInfo = pagesInfoWithLogin emptyLoginFormData {credentials = cred}
+    message s = WidgetState (spinnerOverlay s Black) pagesInfo proxyInfo
 
 
 handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState = do
   do
     cred               <- (decryptPassphraseWithPin hash pin) # (message "Decrypt with PIN" # runStep)
     prepareLoginResult <- (prepareLogin srpConf cred)         # (message "Prepare login"    # runStep)
-    res                <-  loginSteps cred state fragmentState initialPage proxyInfo prepareLoginResult
+    res                <-  loginSteps cred state fragmentState pagesInfo proxyInfo prepareLoginResult
     pure res
   
   # runExceptT
-  >>= handlePinResult       state initialPage      Black
-  >>= handleOperationResult state emptyPage   true Black
+  >>= handlePinResult       state pagesInfo           Black
+  >>= handleOperationResult state emptyPagesInfo true Black
 
   where
-    initialPage = Login emptyLoginFormData {pin = pin, loginType = PinLogin}
-    emptyPage   = Login emptyLoginFormData {loginType = PinLogin}
-    message s   = WidgetState (spinnerOverlay s Black) initialPage proxyInfo
+    pagesInfo           = pagesInfoWithLogin emptyLoginFormData {pin = pin, loginType = PinLogin}
+    emptyPagesInfo      = pagesInfoWithLogin emptyLoginFormData {loginType = PinLogin}
+    message messageText = WidgetState (spinnerOverlay messageText Black) pagesInfo proxyInfo
 
-handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login loginFormData)                                                           proxyInfo))
+handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (pagesInfoWithLogin  loginFormData)                                                      proxyInfo))
 
-handleLoginPageEvent (GoToSignupEvent cred)              state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Signup emptyDataForm     {username = cred.username, password = cred.password}) proxyInfo))
+handleLoginPageEvent (GoToSignupEvent cred)              state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (pagesInfoWithSignup emptyDataForm {username = cred.username, password = cred.password}) proxyInfo))
 
-handleLoginPageEvent (GoToCredentialLoginEvent username) state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (Login emptyLoginFormData {credentials = {username, password: ""}            }) proxyInfo))
+handleLoginPageEvent (GoToCredentialLoginEvent username) state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (pagesInfoWithLogin  emptyLoginFormData {credentials = {username, password: ""}})        proxyInfo))
 
 -- ========================================================================================================================
 
-loginSteps :: Credentials -> AppState -> Fragment.FragmentState -> Page -> ProxyInfo -> PrepareLoginResult -> ExceptT AppError (Widget HTML) OperationState
-loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyInfo prepareLoginResult = do
+loginSteps :: Credentials -> AppState -> Fragment.FragmentState -> Tuple Page PagesState -> ProxyInfo -> PrepareLoginResult -> ExceptT AppError (Widget HTML) OperationState
+loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState pagesInfo proxyInfo prepareLoginResult = do
   let connectionState = {proxy, hashFunc, srpConf, c : hex "", p: hex ""}
 
   ProxyResponse proxy'   loginStep1Result <- (loginStep1         connectionState                 prepareLoginResult.c                                      ) # (message "SRP step 1" # runStep)
@@ -118,16 +118,16 @@ loginSteps cred state@{proxy, hash: hashFunc, srpConf} fragmentState page proxyI
                     , p:                  Just prepareLoginResult.p
                     }
 
-  res                                     <- loadHomePageSteps (merge stateUpdate (state {proxy = proxy''})) page proxyInfo fragmentState
+  res                                     <- loadHomePageSteps (merge stateUpdate (state {proxy = proxy''})) pagesInfo proxyInfo fragmentState
 
   pure $ res
 
   where 
-    message s = WidgetState {status: Spinner, color: Black, message: s} page proxyInfo
+    message s = WidgetState {status: Spinner, color: Black, message: s} pagesInfo proxyInfo
 
-loadHomePageSteps :: AppState -> Page -> ProxyInfo -> Fragment.FragmentState -> ExceptT AppError (Widget HTML) OperationState
+loadHomePageSteps :: AppState -> Tuple Page PagesState -> ProxyInfo -> Fragment.FragmentState -> ExceptT AppError (Widget HTML) OperationState
 
-loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, masterKey: Just (Tuple _ masterKeyEncodingVersion), userInfoReferences: Just userInfoReferences, syncDataWire} page proxyInfo fragmentState = do
+loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, masterKey: Just (Tuple _ masterKeyEncodingVersion), userInfoReferences: Just userInfoReferences, syncDataWire} pagesInfo@(Tuple _ pagesState) proxyInfo fragmentState = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   ProxyResponse proxy'  userInfo <- (do 
@@ -164,19 +164,19 @@ loadHomePageSteps state@{hash: hashFunc, proxy, srpConf, c: Just c, p: Just p, m
     (WidgetState 
       hiddenOverlayInfo
       case donationLevel of
-        DonationWarning -> (Donation donationLevel)
-        _               -> (Main emptyMainPageWidgetState { index = index, cardManagerState = cardManagerInitialState { cardViewState = cardViewState }, donationLevel = donationLevel, syncDataWire = Just syncDataWire, enableSync = enableSync })
+        DonationWarning -> (Tuple Donation $ set _donationPagesState donationLevel pagesState)
+        _               -> (Tuple Main     $ set _mainPagesState emptyMainPageWidgetState { index = index, cardManagerState = cardManagerInitialState { cardViewState = cardViewState }, donationLevel = donationLevel, syncDataWire = Just syncDataWire, enableSync = enableSync } pagesState)
       (getProxyInfoFromProxy proxy''')
     )
 
   where
-    message s = WidgetState {status: Spinner, color: Black, message: s} page proxyInfo
+    message s = WidgetState {status: Spinner, color: Black, message: s} pagesInfo proxyInfo
 
 loadHomePageSteps _ _ _ _  = do
   throwError (InvalidStateError $ CorruptedState "")
 
-handlePinResult :: AppState -> Page -> OverlayColor -> Either AppError OperationState -> Widget HTML (Either AppError OperationState)
-handlePinResult {proxy} page color either = do
+handlePinResult :: AppState -> Tuple Page PagesState -> OverlayColor -> Either AppError OperationState -> Widget HTML (Either AppError OperationState)
+handlePinResult {proxy} pagesInfo color either = do
   let proxyInfo       = getProxyInfoFromProxy proxy
  
   storage <- liftEffect $ window >>= localStorage
@@ -184,7 +184,7 @@ handlePinResult {proxy} page color either = do
   case either of
     Right _ -> do
         liftEffect $ setItem pinFailureCountKey (show 0) storage
-        delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) page proxyInfo
+        delayOperation 250 $ WidgetState (spinnerOverlay "Reset PIN attempts" color) pagesInfo proxyInfo
         pure either
     Left  _ -> do
         failures <- liftEffect $ getItem pinFailureCountKey storage

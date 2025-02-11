@@ -14,7 +14,7 @@ import Control.Category ((<<<))
 import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
 import Data.Function (flip, (#), ($))
 import Data.HexString (fromArrayBuffer)
-import Data.Lens (view)
+import Data.Lens (set, view)
 import Data.List (List(..), singleton)
 import Data.Map (delete, insert, lookup)
 import Data.Maybe (Maybe(..), isNothing)
@@ -30,7 +30,7 @@ import DataModel.IndexVersions.Index (CardEntry(..), Index, _card_identifier, _c
 import DataModel.Proxy (ProxyInfo, ProxyResponse(..))
 import DataModel.SRPVersions.SRP (hashFuncSHA256)
 import DataModel.UserVersions.User (UserInfo(..))
-import DataModel.WidgetState (CardFormInput(..), CardViewState(..), MainPageWidgetState, Page(..), WidgetState(..), CardManagerState)
+import DataModel.WidgetState (CardFormInput(..), CardManagerState, CardViewState(..), MainPageWidgetState, Page(..), WidgetState(..), PagesState, _mainPagesState)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Functions.Card (appendToTitle, archiveCard, createCardEntry, decryptCard, restoreCard)
@@ -38,7 +38,7 @@ import Functions.Communication.Blobs (getBlob)
 import Functions.Communication.SyncBackend (syncBackend)
 import Functions.Events (blur, eventDelayed, focus, scrollElementIntoView, select)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
-import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, syncLocalStorage)
+import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, defaultPagesState, handleOperationResult, noOperation, pagesInfoWithMain, runStep, syncLocalStorage)
 import Functions.Index (computeIndexSyncSteps)
 import IndexFilterView (FilterViewStatus(..))
 import OperationalWidgets.Sync (SyncOperation(..))
@@ -52,46 +52,47 @@ handleCardManagerEvent :: CardManagerEvent -> CardManagerState -> AppState -> Pr
 handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, srpConf, hash: hashFunc, c: Just c, p: Just p, username: Just username, password: Just password, pinExists, enableSync, cardsCache, syncDataWire, donationLevel: Just donationLevel} proxyInfo f = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
   
-  let defaultPage = { index
-                    , credentials:      {username, password}
-                    , donationInfo
-                    , pinExists
-                    , enableSync
-                    , userPreferences
-                    , userAreaState: userAreaInitialState
-                    , cardManagerState
-                    , donationLevel
-                    , syncDataWire: Just syncDataWire
-                    }
+  let defaultMainState = { index
+                        , credentials:      {username, password}
+                        , donationInfo
+                        , pinExists
+                        , enableSync
+                        , userPreferences
+                        , userAreaState: userAreaInitialState
+                        , cardManagerState
+                        , donationLevel
+                        , syncDataWire: Just syncDataWire
+                        }
+  
+  let defaultPagesInfo = Tuple Main $ set _mainPagesState defaultMainState defaultPagesState
 
   case cardManagerEvent of
     
-    (NoEvent) -> noOperation (Tuple state (WidgetState hiddenOverlayInfo (Main defaultPage) proxyInfo))
+    (NoEvent) -> noOperation (Tuple state (WidgetState hiddenOverlayInfo defaultPagesInfo proxyInfo))
 
     (OpenUserAreaEvent) -> 
       noOperation (Tuple 
                   state
                   (WidgetState
                     hiddenOverlayInfo
-                    (Main defaultPage { userAreaState = userAreaInitialState {showUserArea = true} }
-                    )
+                    (pagesInfoWithMain defaultMainState { userAreaState = userAreaInitialState {showUserArea = true} })
                     proxyInfo
                   )
                 )
       <* (eventDelayed (focus "userPage") # affAction)
 
     (ShowShortcutsEvent show) ->
-      updateCardManagerState defaultPage cardManagerState {showShortcutsHelp = show}
+      updateCardManagerState defaultMainState cardManagerState {showShortcutsHelp = show}
     
     (ShowDonationEvent show) ->
       (if show then (pure unit) else focus "mainView" # liftEffect)
       *>
-      updateCardManagerState defaultPage cardManagerState {showDonationOverlay = show}
+      updateCardManagerState defaultMainState cardManagerState {showDonationOverlay = show}
 
     (UpdateDonationLevel days) -> handleDonationPageEvent (DonationEvent.UpdateDonationLevel days) state proxyInfo f
 
     (ChangeFilterEvent filterData) ->
-      updateCardManagerState defaultPage cardManagerState { filterData = filterData {selected = false}
+      updateCardManagerState defaultMainState cardManagerState { filterData = filterData {selected = false}
                                                           , highlightedEntry = Nothing 
                                                           }
       <* case filterData.filterViewStatus of
@@ -103,21 +104,20 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
           FilterViewClosed ->         liftEffect   (focus  "mainView")
 
     (UpdateCardForm cardFormData) ->
-      updateCardManagerState defaultPage cardManagerState { cardViewState = updateCardViewState cardManagerState.cardViewState cardFormData }
+      updateCardManagerState defaultMainState cardManagerState { cardViewState = updateCardViewState cardManagerState.cardViewState cardFormData }
 
     (NavigateCardsEvent navigationEvent) ->
       case navigationEvent of
-        Move         entry -> updateCardManagerState defaultPage (cardManagerState {                        highlightedEntry = entry })
-        Close        entry -> updateCardManagerState defaultPage (cardManagerState {cardViewState = NoCard, highlightedEntry = entry })
-        Open   Nothing     -> doNothing defaultPage
+        Move         entry -> updateCardManagerState defaultMainState (cardManagerState {                        highlightedEntry = entry })
+        Close        entry -> updateCardManagerState defaultMainState (cardManagerState {cardViewState = NoCard, highlightedEntry = entry })
+        Open   Nothing     -> doNothing defaultMainState
         Open  (Just entry) -> do
-          ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache entry (Main defaultPage) proxyInfo
+          ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache entry defaultPagesInfo proxyInfo
           pure (Tuple
                   state {proxy = proxy', cardsCache = cardsCache'}
                   (WidgetState
                     hiddenOverlayInfo
-                    (Main defaultPage { cardManagerState =  cardManagerState {cardViewState = Card card entry, highlightedEntry = Nothing} }
-                    )
+                    (pagesInfoWithMain defaultMainState { cardManagerState =  cardManagerState {cardViewState = Card card entry, highlightedEntry = Nothing} })
                     proxyInfo
                   )
                 )
@@ -127,14 +127,14 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
         <* (liftEffect   (focus                 "mainView"))
     
     (OpenCardFormEvent maybeCard) ->
-      updateCardManagerState defaultPage cardManagerState { cardViewState = uncurry CardForm $ case maybeCard of
+      updateCardManagerState defaultMainState cardManagerState { cardViewState = uncurry CardForm $ case maybeCard of
                                                               Nothing                     -> Tuple  emptyCardFormData                 NewCard
                                                               Just (Tuple cardEntry card) -> Tuple (emptyCardFormData {card = card}) (ModifyCard card cardEntry)
                                                           }
       <* (blur "mainView" # liftEffect)
 
     (AddCardEvent card) ->
-      (cardOperationSteps (Add card) (spinnerWidgetState (Main $ defaultPage {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)}})) cardManagerState state <#> wrapResponse
+      (cardOperationSteps (Add card) (spinnerWidgetState (pagesInfoWithMain $ defaultMainState {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = card}) (NewCardFromFragment card)}})) cardManagerState state <#> wrapResponse
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
       )
@@ -144,9 +144,9 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       (focus "mainView" # liftEffect)
       *>
       do
-        ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache cardEntry (Main defaultPage) proxyInfo
+        ProxyResponse proxy' (Tuple cardsCache' card) <- getCardSteps connectionState cardsCache cardEntry defaultPagesInfo proxyInfo
         let cloneCard                                  = appendToTitle " - copy" <<< (\(DataModel.CardVersions.Card.Card card') -> DataModel.CardVersions.Card.Card card' {archived = false}) $ card
-        res                                           <- cardOperationSteps (Add cloneCard) (spinnerWidgetState (Main defaultPage)) cardManagerState state{proxy = proxy', cardsCache = cardsCache'}
+        res                                           <- cardOperationSteps (Add cloneCard) (spinnerWidgetState defaultPagesInfo) cardManagerState state{proxy = proxy', cardsCache = cardsCache'}
         pure $ wrapResponse res
 
       # runExceptT
@@ -156,7 +156,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       (focus "mainView" # liftEffect)
       *>
       do
-        cardOperationSteps (Delete cardEntry) (spinnerWidgetState (Main defaultPage)) cardManagerState state <#> wrapResponse
+        cardOperationSteps (Delete cardEntry) (spinnerWidgetState defaultPagesInfo) cardManagerState state <#> wrapResponse
 
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
@@ -165,7 +165,7 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       (focus "mainView" # liftEffect)
       *>
       do
-        cardOperationSteps (Edit updatedCard oldCardEntry) (spinnerWidgetState (Main defaultPage {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = updatedCard}) (ModifyCard updatedCard oldCardEntry) }})) cardManagerState state <#> wrapResponse
+        cardOperationSteps (Edit updatedCard oldCardEntry) (spinnerWidgetState (pagesInfoWithMain defaultMainState {cardManagerState = cardManagerState {cardViewState = CardForm (emptyCardFormData {card = updatedCard}) (ModifyCard updatedCard oldCardEntry) }})) cardManagerState state <#> wrapResponse
       
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
@@ -174,9 +174,9 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       (focus "mainView" # liftEffect)
       *>
       do
-        ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry             (Main defaultPage) proxyInfo
+        ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry      defaultPagesInfo proxyInfo
         let updatedCard                      = archiveCard card
-        res                                 <- cardOperationSteps (Edit updatedCard cardEntry) (spinnerWidgetState (Main defaultPage)) cardManagerState state{proxy = proxy'}
+        res                                 <- cardOperationSteps (Edit updatedCard cardEntry) (spinnerWidgetState defaultPagesInfo) cardManagerState state{proxy = proxy'}
         pure $ wrapResponse res
 
       # runExceptT
@@ -186,20 +186,20 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
       (focus "mainView" # liftEffect)
       *>
       do
-        ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry             (Main defaultPage) proxyInfo
+        ProxyResponse proxy' (Tuple _ card) <- getCardSteps  connectionState  cardsCache            cardEntry      defaultPagesInfo proxyInfo
         let updatedCard                      = restoreCard card
-        res                                 <- cardOperationSteps (Edit updatedCard cardEntry) (spinnerWidgetState (Main defaultPage)) cardManagerState state{proxy = proxy'}
+        res                                 <- cardOperationSteps (Edit updatedCard cardEntry) (spinnerWidgetState defaultPagesInfo) cardManagerState state{proxy = proxy'}
         pure $ wrapResponse res
 
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
 
   where
-    wrapResponse :: Tuple AppState Page -> OperationState
-    wrapResponse res = (\page -> WidgetState hiddenOverlayInfo page proxyInfo) <$> res
+    wrapResponse :: Tuple AppState (Tuple Page PagesState) -> OperationState
+    wrapResponse res = (\pagesInfo -> WidgetState hiddenOverlayInfo pagesInfo proxyInfo) <$> res
 
-    spinnerWidgetState :: Page -> String -> WidgetState
-    spinnerWidgetState page message = WidgetState (spinnerOverlay message Black) page proxyInfo
+    spinnerWidgetState :: (Tuple Page PagesState) -> String -> WidgetState
+    spinnerWidgetState pagesInfo message = WidgetState (spinnerOverlay message Black) pagesInfo proxyInfo
 
     updateCardManagerState :: MainPageWidgetState -> CardManagerState -> Widget HTML OperationState
     updateCardManagerState mainPageState cardManagerState' = 
@@ -207,14 +207,17 @@ handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just inde
                     state
                     (WidgetState
                       hiddenOverlayInfo
-                      (Main mainPageState { cardManagerState = cardManagerState' }
+                      ( Tuple Main $ 
+                              set _mainPagesState
+                                  mainPageState { cardManagerState = cardManagerState' }
+                                  defaultPagesState
                       )
                       proxyInfo
                     )
                   )
     
     doNothing :: MainPageWidgetState -> Widget HTML OperationState
-    doNothing mainPageState =  noOperation (Tuple state (WidgetState hiddenOverlayInfo (Main mainPageState) proxyInfo))
+    doNothing mainPageState =  noOperation (Tuple state (WidgetState hiddenOverlayInfo (Tuple Main $ set _mainPagesState mainPageState defaultPagesState) proxyInfo))
 
     updateCardViewState :: CardViewState -> CardFormData -> CardViewState
     updateCardViewState (CardForm _ cardFormInput) cardFormData = CardForm cardFormData cardFormInput
@@ -227,8 +230,8 @@ handleCardManagerEvent _ _ state _ _ = do
 
 -- ===================================================================================================
 
-getCardSteps :: ConnectionState -> CardsCache -> CardEntry -> Page -> ProxyInfo -> ExceptT AppError (Widget HTML) (ProxyResponse (Tuple CardsCache DataModel.CardVersions.Card.Card))
-getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) page proxyInfo = do
+getCardSteps :: ConnectionState -> CardsCache -> CardEntry -> Tuple Page PagesState -> ProxyInfo -> ExceptT AppError (Widget HTML) (ProxyResponse (Tuple CardsCache DataModel.CardVersions.Card.Card))
+getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) pagesInfo proxyInfo = do
   let cardFromCache = lookup (reference cardEntry) cardsCache
   case cardFromCache of
     Just card -> pure $ ProxyResponse connectionState.proxy (Tuple cardsCache card)
@@ -240,11 +243,11 @@ getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) page proxyIn
   
   where
     message :: String -> WidgetState
-    message messageText = WidgetState (spinnerOverlay messageText Black) page proxyInfo
+    message messageText = WidgetState (spinnerOverlay messageText Black) pagesInfo proxyInfo
 
 data CardOperation = Add DataModel.CardVersions.Card.Card | Edit DataModel.CardVersions.Card.Card CardEntry | Delete CardEntry
 
-cardOperationSteps :: CardOperation -> (String -> WidgetState) -> CardManagerState -> AppState -> ExceptT AppError (Widget HTML) (Tuple AppState Page)
+cardOperationSteps :: CardOperation -> (String -> WidgetState) -> CardManagerState -> AppState -> ExceptT AppError (Widget HTML) (Tuple AppState (Tuple Page PagesState))
 cardOperationSteps cardOperation message cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, hash: hashFunc, srpConf, c: Just c, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
@@ -266,17 +269,20 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
                 , index = Just newIndex, userInfo = Just newUserInfo, userInfoReferences = Just newUserInfoReference
                 , masterKey = Just newMasterKey
                 })
-        (Main { index:            newIndex
-              , credentials:     {username, password}
-              , donationInfo
-              , pinExists
-              , enableSync
-              , userPreferences
-              , userAreaState:    userAreaInitialState
-              , cardManagerState: newCardManagerState
-              , donationLevel
-              , syncDataWire: Just syncDataWire
-              }
+        ( Tuple Main $
+                set _mainPagesState 
+                    { index:            newIndex
+                    , credentials:     {username, password}
+                    , donationInfo
+                    , pinExists
+                    , enableSync
+                    , userPreferences
+                    , userAreaState:    userAreaInitialState
+                    , cardManagerState: newCardManagerState
+                    , donationLevel
+                    , syncDataWire: Just syncDataWire
+                    }
+                    defaultPagesState
         )
       )
 

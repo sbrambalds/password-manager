@@ -11,9 +11,9 @@ import Data.Tuple (Tuple(..))
 import DataModel.AppState (AppState)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (ProxyInfo, ProxyResponse(..))
-import DataModel.WidgetState (LoginFormData, LoginType(..), Page(..), WidgetState(..))
+import DataModel.WidgetState (LoginFormData, LoginType(..), WidgetState(..))
 import Functions.Communication.Signup (signupUser)
-import Functions.Handler.GenericHandlerFunctions (OperationState, noOperation, handleOperationResult, runStep)
+import Functions.Handler.GenericHandlerFunctions (OperationState, handleOperationResult, noOperation, pagesInfoWithLogin, pagesInfoWithSignup, runStep)
 import Functions.Handler.LoginPageEventHandler (loginSteps)
 import Views.LoginFormView (emptyLoginFormData)
 import Views.OverlayView (OverlayColor(..), hiddenOverlayInfo, spinnerOverlay)
@@ -27,14 +27,14 @@ handleSignupPageEvent :: SignupPageEvent -> AppState -> ProxyInfo -> Fragment.Fr
 
 handleSignupPageEvent (SignupEvent cred) state@{proxy, hash, srpConf} proxyInfo fragmentState = 
   do
-    ProxyResponse newProxy signupResult <- (signupUser {proxy, hashFunc: hash, srpConf, c: hex "", p: hex ""} cred) # (WidgetState (spinnerOverlay "registering" Black) initialPage proxyInfo # runStep)
-    res                                 <-  loginSteps cred (state {proxy = newProxy}) fragmentState initialPage proxyInfo signupResult
+    ProxyResponse newProxy signupResult <- (signupUser {proxy, hashFunc: hash, srpConf, c: hex "", p: hex ""} cred) # (WidgetState (spinnerOverlay "registering" Black) pagesInfo proxyInfo # runStep)
+    res                                 <-  loginSteps cred (state {proxy = newProxy}) fragmentState pagesInfo proxyInfo signupResult
     pure res
   
   # runExceptT 
-  >>= handleOperationResult state initialPage true Black
+  >>= handleOperationResult state pagesInfo true Black
 
   where
-    initialPage = Signup $ getSignupDataFromCredentials cred
+    pagesInfo = pagesInfoWithSignup (getSignupDataFromCredentials cred)
 
-handleSignupPageEvent (GoToLoginEvent cred) state proxyInfo _ = noOperation $ Tuple state (WidgetState hiddenOverlayInfo (Login (getLoginFormData state) {credentials = cred}) proxyInfo)
+handleSignupPageEvent (GoToLoginEvent cred) state proxyInfo _ = noOperation $ Tuple state (WidgetState hiddenOverlayInfo (pagesInfoWithLogin (getLoginFormData state) {credentials = cred}) proxyInfo)

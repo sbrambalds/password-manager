@@ -12,6 +12,7 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except (runExceptT)
 import Data.DateTime (adjust)
 import Data.Function ((#), ($))
+import Data.Lens (set)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..), fst)
@@ -20,13 +21,13 @@ import DataModel.AppState (AppState)
 import DataModel.FragmentState as Fragment
 import DataModel.Proxy (ProxyInfo)
 import DataModel.UserVersions.User (UserInfo(..))
-import DataModel.WidgetState (CardFormInput(..), CardViewState(..), Page(..), WidgetState(..))
+import DataModel.WidgetState (CardFormInput(..), CardViewState(..), Page(..), PagesState, WidgetState(..), _mainPagesState)
 import Effect.Class (liftEffect)
 import Effect.Now (nowDateTime)
 import Functions.Communication.SyncBackend (syncBackend)
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
 import Functions.Events (focus)
-import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, handleOperationResult, noOperation, runStep, syncLocalStorage)
+import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, defaultPagesState, handleOperationResult, noOperation, runStep, syncLocalStorage)
 import Functions.User (computeUserInfoSyncSteps)
 import Views.AppView (emptyMainPageWidgetState)
 import Views.CardsManagerView (cardManagerInitialState)
@@ -38,23 +39,23 @@ import Views.UserAreaView (userAreaInitialState)
 handleDonationPageEvent :: DonationPageEvent -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
 
 handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, proxy, hash: hashFunc, username: Just username, password: Just password, index: Just index, userInfo: Just userInfo@(UserInfo {userPreferences, donationInfo}), pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} proxyInfo fragmentState = do
-  let defaultPage = { index
-                    , credentials:      {username, password}
-                    , donationInfo
-                    , pinExists
-                    , enableSync
-                    , userPreferences
-                    , userAreaState:    userAreaInitialState
-                    , cardManagerState: cardManagerInitialState
-                    , donationLevel
-                    , syncDataWire: Just syncDataWire
-                    }
+  let defaultMainState = { index
+                        , credentials:      {username, password}
+                        , donationInfo
+                        , pinExists
+                        , enableSync
+                        , userPreferences
+                        , userAreaState:    userAreaInitialState
+                        , cardManagerState: cardManagerInitialState
+                        , donationLevel
+                        , syncDataWire: Just syncDataWire
+                        }
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   case donationPageEvent of
     UpdateDonationLevel days  ->
       do
-        let page = Main defaultPage { donationLevel = DonationOk }
+        let page = Tuple Main $ set _mainPagesState defaultMainState { donationLevel = DonationOk } defaultPagesState
 
         newUserInfo                            <- ((\now -> pure $ UserInfo ((unwrap userInfo) {donationInfo = do
                                                     nextDonationReminder <- adjust days now
@@ -80,10 +81,14 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, 
                   })
           (WidgetState
             hiddenOverlayInfo
-            (Main emptyMainPageWidgetState  { index            = index
-                                            , cardManagerState = cardManagerInitialState { cardViewState = cardViewState }
-                                            , donationLevel    = newDonationLevel
-                                            }
+            (Tuple Main $
+                  set _mainPagesState 
+                      emptyMainPageWidgetState  { index            = index
+                                                , cardManagerState = cardManagerInitialState { cardViewState = cardViewState }
+                                                , donationLevel    = newDonationLevel
+                                                }
+                      defaultPagesState
+                  
             )
             proxyInfo
           )
@@ -92,10 +97,10 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, 
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
 
-    CloseDonationPage -> (focus "mainView" # liftEffect) *> noOperation (Tuple state $ WidgetState hiddenOverlayInfo (Main defaultPage) proxyInfo)
+    CloseDonationPage -> (focus "mainView" # liftEffect) *> noOperation (Tuple state $ WidgetState hiddenOverlayInfo (Tuple Main $ set _mainPagesState defaultMainState defaultPagesState) proxyInfo)
   where
-    spinnerWidgetState :: Page -> String -> WidgetState
-    spinnerWidgetState page message = WidgetState (spinnerOverlay message Black) page proxyInfo
+    spinnerWidgetState :: Tuple Page PagesState -> String -> WidgetState
+    spinnerWidgetState pagesInfo message = WidgetState (spinnerOverlay message Black) pagesInfo proxyInfo
 
 handleDonationPageEvent _ state _ _ = do
   throwError $ InvalidStateError (CorruptedState "DonationPage")

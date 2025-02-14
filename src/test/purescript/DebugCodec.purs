@@ -23,7 +23,7 @@ import DataModel.Password (PasswordGeneratorSettings)
 import DataModel.Proxy (DataOnLocalStorage(..), ProxyInfo(..))
 import DataModel.UserVersions.User (UserPreferences(..), DonationInfo)
 import DataModel.UserVersions.UserCodecs (dateTimeCodec)
-import DataModel.WidgetState (CardFormInput(..), CardManagerState, CardViewState, ImportState, ImportStep(..), LoginFormData, LoginType(..), MainPageWidgetState, Page(..), UserAreaPage(..), UserAreaState, UserAreaSubmenu(..), WidgetState(..), PagesState)
+import DataModel.WidgetState (CardFormInput(..), CardManagerState, CardViewState, ImportState, ImportStep(..), LoginFormData, LoginType(..), MainPageWidgetState, Page(..), PagesState, UserAreaPage(..), UserAreaState, UserAreaSubmenu(..), WidgetState(..))
 import DataModel.WidgetState (CardViewState(..)) as CardViewState
 import Functions.Donations (DonationLevel(..))
 import IndexFilterView (Filter(..), FilterData, FilterViewStatus(..))
@@ -161,19 +161,22 @@ credentialsCodec =
       }
     )
 
--- data LoginType = CredentialLogin | PinLogin
+-- data LoginType = CredentialLogin | PinLogin | PasskeyLogin
 loginTypeCodec :: CA.JsonCodec LoginType
 loginTypeCodec = dimap toVariant fromVariant $ CAV.variantMatch
     { credentialsLogin: Left unit
     , pinLogin:         Left unit
+    , passkeyLogin:     Left unit
     }
   where
     toVariant = case _ of
       CredentialLogin -> V.inj (Proxy :: _ "credentialsLogin") unit
       PinLogin        -> V.inj (Proxy :: _ "pinLogin"        ) unit
+      PasskeyLogin    -> V.inj (Proxy :: _ "passkeyLogin"    ) unit
     fromVariant = V.match
-      { credentialsLogin:  \_ -> CredentialLogin
-      , pinLogin:          \_ -> PinLogin
+      { credentialsLogin: \_ -> CredentialLogin
+      , pinLogin:         \_ -> PinLogin
+      , passkeyLogin:     \_ -> PasskeyLogin
       }
 
 -- type SignupDataForm = { username       :: String
@@ -242,6 +245,7 @@ proxyInfoCodec = dimap toVariant fromVariant $ CAV.variantMatch
 -- , credentials                   :: Credentials
 -- , donationInfo                  :: Maybe DonationInfo
 -- , pinExists                     :: Boolean
+-- , passkeyExists                 :: Boolean
 -- , userAreaState                 :: UserAreaState
 -- , cardManagerState              :: CardManagerState
 -- , userPreferences               :: UserPreferences
@@ -257,6 +261,7 @@ mainPageWidgetStateCodec =
       , credentials:      credentialsCodec
       , donationInfo:     CAC.maybe donationInfoCodec
       , pinExists:        CA.boolean
+      , passkeyExists:    CA.boolean
       , userAreaState:    userAreaStateCodec
       , cardManagerState: cardManagerStateCodec
       , userPreferences:  userPreferencesCodec
@@ -335,12 +340,13 @@ userAreaStateCodec =
       }
     )
 
--- data UserAreaPage = Export | Import | Pin | LocalSync | Delete | Preferences | Donate | ChangePassword | About | None
+-- data UserAreaPage = Export | Import | Pin | Passkey | LocalSync | Delete | Preferences | Donate | ChangePassword | About | None
 userAreaPageCodec :: CA.JsonCodec UserAreaPage
 userAreaPageCodec = dimap toVariant fromVariant $ CAV.variantMatch
     { export:         Left unit
     , import:         Left unit
     , pin:            Left unit
+    , passkey:        Left unit
     , delete:         Left unit
     , preferences:    Left unit
     , changePassword: Left unit
@@ -354,6 +360,7 @@ userAreaPageCodec = dimap toVariant fromVariant $ CAV.variantMatch
       Export         -> V.inj (Proxy :: _ "export") unit
       Import         -> V.inj (Proxy :: _ "import") unit
       Pin            -> V.inj (Proxy :: _ "pin") unit
+      Passkey        -> V.inj (Proxy :: _ "passkey") unit
       Delete         -> V.inj (Proxy :: _ "delete") unit
       Preferences    -> V.inj (Proxy :: _ "preferences") unit
       ChangePassword -> V.inj (Proxy :: _ "changePassword") unit
@@ -365,6 +372,7 @@ userAreaPageCodec = dimap toVariant fromVariant $ CAV.variantMatch
       { export:         \_ -> Export
       , import:         \_ -> Import
       , pin:            \_ -> Pin
+      , passkey:        \_ -> Passkey
       , delete:         \_ -> Delete
       , preferences:    \_ -> Preferences
       , changePassword: \_ -> ChangePassword

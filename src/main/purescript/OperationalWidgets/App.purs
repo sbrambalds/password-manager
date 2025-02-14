@@ -27,10 +27,13 @@ import Views.LoginFormView (LoginPageEvent(..))
 import Views.OverlayView (hiddenOverlayInfo)
 
 app :: forall a. AppState -> Fragment.FragmentState -> Widget HTML a
-app appState@{proxy} fragmentState = case fragmentState of
+app appState@{proxy, passkeyExists} fragmentState = case fragmentState of
     Fragment.Login cred   -> appWithInitialOperation        appState (LoginPageEvent $ LoginEvent cred)
     Fragment.Registration -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (Tuple Signup defaultPagesState)                 proxyInfo))
-    _                     -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (pagesInfoWithLogin (getLoginFormData appState)) proxyInfo))
+    _                     -> 
+      case passkeyExists of 
+        false             -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (pagesInfoWithLogin (getLoginFormData appState)) proxyInfo))
+        true              -> appWithInitialOperation        appState (LoginPageEvent LoginPasskeyEvent)
 
   where
     proxyInfo :: ProxyInfo

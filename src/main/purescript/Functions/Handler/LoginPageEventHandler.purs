@@ -5,10 +5,10 @@ import Concur.React (HTML, affAction)
 import Control.Applicative (pure)
 import Control.Bind (bind, discard, (<#>), (=<<), (>>=))
 import Control.Category ((<<<))
-import Control.Monad.Except (throwError)
+import Control.Monad.Except (ExceptT(..), throwError)
 import Control.Monad.Except.Trans (ExceptT, runExceptT)
 import Data.CommutativeRing ((+))
-import Data.Either (Either(..))
+import Data.Either (Either(..), note)
 import Data.Function ((#), ($))
 import Data.HexString (hex, toArrayBuffer)
 import Data.Int (fromString)
@@ -37,6 +37,7 @@ import Functions.EncodeDecode (importCryptoKeyAesGCM)
 import Functions.Events (effectDelayed, focus)
 import Functions.Handler.GenericHandlerFunctions (OperationState, delayOperation, handleOperationResult, noOperation, pagesInfoWithLogin, pagesInfoWithSignup, runStep, runWidgetStep)
 import Functions.Index (decryptIndex)
+import Functions.Passkey (getCredentialsWithPasskey, getPRFKey, passkeyIdKey, passkeyUsernameKey)
 import Functions.Pin (decryptPassphraseWithPin, deleteCredentials, pinFailureCountKey)
 import Functions.SRP (checkM2)
 import Functions.State (getProxyInfoFromProxy, updateProxy)
@@ -70,7 +71,7 @@ handleLoginPageEvent (LoginEvent cred) state@{srpConf} proxyInfo fragmentState =
     message s = WidgetState (spinnerOverlay s Black) pagesInfo proxyInfo
 
 
-handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState = do
+handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmentState =
   do
     cred               <- (decryptPassphraseWithPin hash pin) # (message "Decrypt with PIN" # runStep)
     prepareLoginResult <- (prepareLogin srpConf cred)         # (message "Prepare login"    # runStep)
@@ -84,6 +85,26 @@ handleLoginPageEvent (LoginPinEvent pin) state@{hash, srpConf} proxyInfo fragmen
   where
     pagesInfo           = pagesInfoWithLogin emptyLoginFormData {pin = pin, loginType = PinLogin}
     emptyPagesInfo      = pagesInfoWithLogin emptyLoginFormData {loginType = PinLogin}
+    message messageText = WidgetState (spinnerOverlay messageText Black) pagesInfo proxyInfo
+
+handleLoginPageEvent (LoginPasskeyEvent) state@{srpConf, hash: hashFunc} proxyInfo fragmentState =
+  do
+    cred <- (do
+              storage <- liftEffect $ window >>= localStorage
+              id       <- getItem passkeyIdKey       storage <#> note (InvalidStateError (CorruptedSavedPassphrase "id not found in local storage"))   # liftEffect # ExceptT
+              username <- getItem passkeyUsernameKey storage <#> note (InvalidStateError (CorruptedSavedPassphrase "salt not found in local storage")) # liftEffect # ExceptT
+  
+              getCredentialsWithPasskey =<< (getPRFKey hashFunc username (toArrayBuffer $ hex id))
+            ) # (message "Decrypt with PIN" # runStep)
+    prepareLoginResult <- (prepareLogin srpConf cred)         # (message "Prepare login"    # runStep)
+    res                <-  loginSteps cred state fragmentState pagesInfo proxyInfo prepareLoginResult
+    pure res
+
+  # runExceptT
+  >>= handleOperationResult state pagesInfo true Black
+
+  where
+    pagesInfo           = pagesInfoWithLogin emptyLoginFormData {loginType = PasskeyLogin}
     message messageText = WidgetState (spinnerOverlay messageText Black) pagesInfo proxyInfo
 
 handleLoginPageEvent (UpdateForm loginFormData)          state proxyInfo _ = noOperation (Tuple state (WidgetState hiddenOverlayInfo (pagesInfoWithLogin  loginFormData)                                                      proxyInfo))
@@ -194,5 +215,5 @@ handlePinResult {proxy} pagesInfo color either = do
           effectDelayed 510.0 (focus "loginPINInput" # liftEffect) # affAction
           pure either
         else do
-          liftEffect $ deleteCredentials storage
+          deleteCredentials # liftEffect
           pure $ (Left (ProtocolError MaxPinAttemptsReachedError))

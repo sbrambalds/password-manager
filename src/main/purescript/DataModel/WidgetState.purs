@@ -48,7 +48,7 @@ _donationPagesState = prop (Proxy :: _ "donation")
 
 type PIN = String
 
-data LoginType = CredentialLogin | PinLogin
+data LoginType = CredentialLogin | PinLogin | PasskeyLogin
 
 type LoginFormData = 
   { credentials :: Credentials
@@ -65,7 +65,7 @@ type UserAreaState = {
 , userAreaSubmenus :: Map UserAreaSubmenu Boolean
 }
 
-data UserAreaPage = Export | Import | Delete | Preferences | ChangePassword | Pin | DeviceSync | Donate | About | None
+data UserAreaPage = Export | Import | Delete | Preferences | ChangePassword | Pin | Passkey | DeviceSync | Donate | About | None
 derive instance eqUserAreaPage :: Eq UserAreaPage
 
 data ImportStep = Upload | Selection | Confirm
@@ -88,6 +88,7 @@ type MainPageWidgetState = {
 , credentials        :: Credentials
 , donationInfo       :: Maybe DonationInfo
 , pinExists          :: Boolean
+, passkeyExists      :: Boolean
 , enableSync         :: EnableSync
 , userAreaState      :: UserAreaState
 , cardManagerState   :: CardManagerState

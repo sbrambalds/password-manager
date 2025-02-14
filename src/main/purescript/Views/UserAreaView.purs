@@ -34,6 +34,7 @@ import Views.DonationViews (donationIFrame)
 import Views.DonationViews as DonationEvent
 import Views.ExportView (ExportEvent, exportView)
 import Views.ImportView (importView, initialImportState)
+import Views.SetPasskeyView (PasskeyEvent, setPasskeyView)
 import Views.SetPinView (PinEvent, setPinView)
 import Views.UserPreferencesView (userPreferencesView)
 
@@ -43,6 +44,7 @@ data UserAreaEvent    = CloseUserAreaEvent
                       | UpdateUserPreferencesEvent UserPreferences
                       | ChangePasswordEvent String
                       | SetPinEvent PinEvent
+                      | SetPasskeyEvent PasskeyEvent
                       | DeleteAccountEvent
                       | ImportCardsEvent ImportState
                       | ExportEvent ExportEvent
@@ -54,8 +56,8 @@ data UserAreaEvent    = CloseUserAreaEvent
 userAreaInitialState :: UserAreaState
 userAreaInitialState = { showUserArea: false, userAreaOpenPage: None, importState: initialImportState, userAreaSubmenus: fromFoldable [(Tuple Account false), (Tuple Data false)]}
 
-userAreaView :: UserAreaState -> UserPreferences -> Credentials -> Maybe DonationInfo -> ProxyInfo -> Boolean -> EnableSync -> Maybe (Wire (Widget HTML) SyncData) -> Widget HTML (Tuple UserAreaEvent UserAreaState)
-userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenus} userPreferences credentials donationInfo proxyInfo pinExists enableSync syncDataWire = do
+userAreaView :: UserAreaState -> UserPreferences -> Credentials -> Maybe DonationInfo -> ProxyInfo -> Boolean -> Boolean -> EnableSync -> Maybe (Wire (Widget HTML) SyncData) -> Widget HTML (Tuple UserAreaEvent UserAreaState)
+userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenus} userPreferences credentials donationInfo proxyInfo pinExists passkeyExists enableSync syncDataWire = do
   commitHash <- liftEffect currentCommit
   ((div [Props._id "userPage", Props.className (if showUserArea then "open" else "closed"), Props.tabIndex 0, Props.filterProp (\e -> (unsafeCoerce e).key == "Escape") Props.onKeyDown $> CloseUserAreaEvent] [
       div [Props.onClick, Props.className "mask"] [] $> CloseUserAreaEvent
@@ -78,8 +80,9 @@ userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenu
         , subMenuElement Delete         (Enabled enabled) "Delete account"
         ]
       , subMenu Device  "Device" [
-          subMenuElement Pin            (Enabled true   ) "Device PIN"
-        , subMenuElement DeviceSync     (Enabled true   ) "Device Sync" 
+          subMenuElement Pin            (Enabled true   ) "PIN"
+        , subMenuElement Passkey        (Enabled true   ) "Passkey"
+        , subMenuElement DeviceSync     (Enabled true   ) "Sync" 
       ]
       , subMenu Data    "Data"    [
           subMenuElement Import         (Enabled enabled) "Import"
@@ -117,6 +120,7 @@ userAreaView state@{showUserArea, userAreaOpenPage, importState, userAreaSubmenu
         ChangePassword  -> frame (changePasswordView  credentials     <#> ChangePasswordEvent)
         Delete          -> frame (deleteUserView      credentials      $> DeleteAccountEvent)
         Pin             -> frame (setPinView          pinExists       <#> SetPinEvent)
+        Passkey         -> frame (setPasskeyView      passkeyExists   <#> SetPasskeyEvent)
         DeviceSync      -> frame (deviceSyncView      enableSync 
                                                       proxyInfo
                                                       syncDataWire    <#> UpdateSyncPreference)

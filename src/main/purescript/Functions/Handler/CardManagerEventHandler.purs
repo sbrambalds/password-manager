@@ -49,13 +49,14 @@ import Views.OverlayView (OverlayColor(..), hiddenOverlayInfo, spinnerOverlay)
 import Views.UserAreaView (userAreaInitialState)
 
 handleCardManagerEvent :: CardManagerEvent -> CardManagerState -> AppState -> ProxyInfo -> Fragment.FragmentState -> Widget HTML OperationState
-handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, srpConf, hash: hashFunc, c: Just c, p: Just p, username: Just username, password: Just password, pinExists, enableSync, cardsCache, syncDataWire, donationLevel: Just donationLevel} proxyInfo f = do
+handleCardManagerEvent cardManagerEvent cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, srpConf, hash: hashFunc, c: Just c, p: Just p, username: Just username, password: Just password, pinExists, passkeyExists, enableSync, cardsCache, syncDataWire, donationLevel: Just donationLevel} proxyInfo f = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
   
   let defaultMainState = { index
                         , credentials:      {username, password}
                         , donationInfo
                         , pinExists
+                        , passkeyExists
                         , enableSync
                         , userPreferences
                         , userAreaState: userAreaInitialState
@@ -248,7 +249,7 @@ getCardSteps connectionState cardsCache cardEntry@(CardEntry entry) pagesInfo pr
 data CardOperation = Add DataModel.CardVersions.Card.Card | Edit DataModel.CardVersions.Card.Card CardEntry | Delete CardEntry
 
 cardOperationSteps :: CardOperation -> (String -> WidgetState) -> CardManagerState -> AppState -> ExceptT AppError (Widget HTML) (Tuple AppState (Tuple Page PagesState))
-cardOperationSteps cardOperation message cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, hash: hashFunc, srpConf, c: Just c, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
+cardOperationSteps cardOperation message cardManagerState state@{index: Just index, userInfo: Just (UserInfo {userPreferences, donationInfo}), proxy, hash: hashFunc, srpConf, c: Just c, p: Just p, cardsCache, username: Just username, password: Just password, pinExists, passkeyExists, enableSync, syncDataWire, donationLevel: Just donationLevel} = do
   let connectionState = {proxy, hashFunc, srpConf, c, p}
 
   { saveCardOp, deleteCardOp
@@ -275,6 +276,7 @@ cardOperationSteps cardOperation message cardManagerState state@{index: Just ind
                     , credentials:     {username, password}
                     , donationInfo
                     , pinExists
+                    , passkeyExists
                     , enableSync
                     , userPreferences
                     , userAreaState:    userAreaInitialState

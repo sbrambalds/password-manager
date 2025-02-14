@@ -22,6 +22,7 @@ type AppState =
   , username :: Maybe String
   , password :: Maybe String
   , pinExists :: Boolean
+  , passkeyExists :: Boolean
   , c :: Maybe HexString
   , p :: Maybe HexString
   , s :: Maybe HexString

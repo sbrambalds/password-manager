@@ -110,6 +110,7 @@ resetState state = merge baseState state
 baseState ∷ { username :: Maybe String
             , password :: Maybe String
             , pinExists :: Boolean
+            , passkeyExists :: Boolean
             , c :: Maybe HexString
             , p :: Maybe HexString
             , s :: Maybe HexString
@@ -126,6 +127,7 @@ baseState ∷ { username :: Maybe String
 baseState = { username: Nothing
             , password: Nothing
             , pinExists: false
+            , passkeyExists: false
             , c: Nothing
             , s: Nothing
             , p: Nothing

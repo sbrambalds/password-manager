@@ -31,7 +31,7 @@ import Views.SignupFormView (SignupPageEvent, signupFormView)
 import Views.UserAreaView (UserAreaEvent, userAreaInitialState, userAreaView)
 
 emptyMainPageWidgetState :: MainPageWidgetState
-emptyMainPageWidgetState = { index: emptyIndex, credentials: emptyCredentials, donationInfo: Nothing, pinExists: false, userAreaState: userAreaInitialState, cardManagerState: cardManagerInitialState, donationLevel: DonationOk, userPreferences: defaultUserPreferences, enableSync: false, syncDataWire: Nothing }
+emptyMainPageWidgetState = { index: emptyIndex, credentials: emptyCredentials, donationInfo: Nothing, pinExists: false, passkeyExists: false, userAreaState: userAreaInitialState, cardManagerState: cardManagerInitialState, donationLevel: DonationOk, userPreferences: defaultUserPreferences, enableSync: false, syncDataWire: Nothing }
 
 data PageEvent = LoginPageEvent           LoginPageEvent
                | SignupPageEvent          SignupPageEvent
@@ -67,6 +67,7 @@ appView widgetState@(WidgetState overlayInfo (Tuple page pagesState) proxyInfo) 
             , credentials
             , donationInfo
             , pinExists
+            , passkeyExists
             , enableSync
             , cardManagerState
             , userPreferences
@@ -74,8 +75,8 @@ appView widgetState@(WidgetState overlayInfo (Tuple page pagesState) proxyInfo) 
             , syncDataWire} = pagesState.main
         in
         div [Props._id "homePage"] [
-          ( MainPageCardManagerEvent                         # uncurry) <$> cardsManagerView cardManagerState index (unwrap userPreferences).passwordGeneratorSettings donationLevel proxyInfo enableShortcuts enableSync syncDataWire
-        , ((MainPageUserAreaEvent # flip $ cardManagerState) # uncurry) <$> userAreaView     userAreaState userPreferences credentials                                 donationInfo  proxyInfo pinExists       enableSync syncDataWire
+          ( MainPageCardManagerEvent                         # uncurry) <$> cardsManagerView cardManagerState index (unwrap userPreferences).passwordGeneratorSettings donationLevel proxyInfo enableShortcuts         enableSync syncDataWire
+        , ((MainPageUserAreaEvent # flip $ cardManagerState) # uncurry) <$> userAreaView     userAreaState userPreferences credentials                                 donationInfo  proxyInfo pinExists passkeyExists enableSync syncDataWire
         ] 
       ]
     ]

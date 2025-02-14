@@ -98,6 +98,11 @@ handleOperationResult state@{proxy} (Tuple page pagesState) showDone color =
       (liftEffect $ log $ show error) *>
       case error of
         -- _ -> ErrorPage --TODO
+        OperationCanceled -> do
+          pure $ Tuple state (WidgetState { status: Hidden, color, message: "" } (Tuple page pagesState) (getProxyInfoFromProxy proxy))
+        OperationUnsupported -> do
+          delayOperation 500 (WidgetState { status: Failed, color, message: "Unsupported" } (Tuple page pagesState) (getProxyInfoFromProxy proxy))
+          pure $ Tuple state (WidgetState { status: Hidden, color, message: ""            } (Tuple page pagesState) (getProxyInfoFromProxy proxy))
         ProtocolError MaxPinAttemptsReachedError -> do
           delayOperation 500                       (WidgetState { status: Failed, color, message: "Max pin attempts" } (Tuple page pagesState) (getProxyInfoFromProxy proxy))
           pure $ Tuple (state {pinExists = false}) (WidgetState { status: Hidden, color, message: ""                 } (Tuple Login defaultPagesState {login = emptyLoginFormData {credentials = emptyCredentials {username = fromMaybe "" state.username}, loginType = CredentialLogin}}) (getProxyInfoFromProxy proxy))

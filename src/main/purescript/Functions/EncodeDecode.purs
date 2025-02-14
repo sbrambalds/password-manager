@@ -2,13 +2,13 @@ module Functions.EncodeDecode where
 
 import Control.Alt ((<$>))
 import Control.Applicative (pure)
-import Control.Bind (bind, (>>=))
+import Control.Bind (bind, (<#>), (>>=))
 import Control.Monad.Except.Trans (ExceptT(..), runExceptT, except, withExceptT)
 import Crypto.Subtle.Constants.AES (aesGCM, l256, t128)
 import Crypto.Subtle.Encrypt as Encrypt
 import Crypto.Subtle.Key.Generate as KG
 import Crypto.Subtle.Key.Import as KI
-import Crypto.Subtle.Key.Types (decrypt, encrypt, exportKey)
+import Crypto.Subtle.Key.Types (CryptoKey, decrypt, encrypt, exportKey)
 import Crypto.Subtle.Key.Types as Key.Types
 import Data.Argonaut.Core as A
 import Data.Argonaut.Parser as P
@@ -17,14 +17,20 @@ import Data.Codec.Argonaut (JsonCodec, decode, encode)
 import Data.CommutativeRing ((*))
 import Data.Either (Either(..))
 import Data.EuclideanRing ((/))
-import Data.Function (($))
+import Data.Function ((#), ($), (<<<))
 import Data.HexString (Base(..), HexString, fromArrayBuffer, hex, splitHexAt, toArrayBuffer, toString)
 import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
+import Data.Ring ((-))
 import Data.Show (show)
+import Data.String (length, splitAt)
+import DataModel.AppError (AppError(..))
+import DataModel.Communication.ProtocolError (ProtocolError(..))
+import DataModel.EncodedPassword (EncodedPassword, encodedPasswordCodec)
 import Effect.Aff (Aff)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
+import Effect.Exception (message)
 import Effect.Exception as EX
 import Functions.ArrayBuffer (concatArrayBuffers)
 import Functions.SRP (randomArrayBuffer)
@@ -73,3 +79,26 @@ decryptJson codec key bytes = do
       object :: a <- withExceptT (\err -> EX.error $ show err) (except $ decode codec parsedJson)
       pure object
     pure result
+
+-- ==========================================
+
+type Password = String
+
+encryptedPassphraseByteLength :: Int
+encryptedPassphraseByteLength = 1024
+
+encryptCredentials :: Password -> CryptoKey -> ExceptT AppError Aff HexString
+encryptCredentials password key = do
+  let passphraseHexBytes = ((length (toString Hex (hex password))) * 4) / 8
+  let paddingBytesLength =  encryptedPassphraseByteLength - passphraseHexBytes - 1
+  paddingBytes     <- liftAff $ randomArrayBuffer paddingBytesLength
+  paddedPassphrase <- liftAff $ fromArrayBuffer <$> (liftEffect $ concatArrayBuffers ((toArrayBuffer $ hex password) : paddingBytes : Nil))
+  let obj = { padding: paddingBytesLength, passphrase: toString Hex paddedPassphrase }
+
+  encryptJson encodedPasswordCodec key obj <#> fromArrayBuffer # liftAff
+
+decryptCredentials :: HexString -> CryptoKey -> ExceptT AppError Aff Password
+decryptCredentials encryptedPassword key = do
+  { padding, passphrase } :: EncodedPassword <- decryptJson encodedPasswordCodec key (toArrayBuffer encryptedPassword) # ExceptT # withExceptT (ProtocolError <<< CryptoError <<< message)
+  
+  pure $ toString Dec $ hex $ (splitAt ((length passphrase) - (padding * 2)) passphrase).before

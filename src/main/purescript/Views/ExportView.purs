@@ -33,7 +33,7 @@ exportView = div [Props._id "exportPage"] [
         div [] [
           button [Props.onClick] [span [] [text "download HTML+JSON - epsilon"]] $> UnencryptedCopy Current
         , div [Props.className "description"] [
-            p [] [ text "Compatible with the ", span [Props.className "important"] [text "current versions"], text " of Clipperz" ]
+            p [] [ text "Compatible with the ", span [Props.className "important"] [text "current version"],  text " of Clipperz" ]
           ]
         ]
       , div [] [

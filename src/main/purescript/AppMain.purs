@@ -25,6 +25,7 @@ import DataModel.FragmentState as Fragment
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Foreign (unsafeToForeign)
+import Functions.Passkey (passkeyExists)
 import Functions.Pin (pinExists)
 import Functions.State (computeInitialState)
 import JSURI (decodeURI)
@@ -40,12 +41,13 @@ main :: Effect Unit
 main = do
   fragmentState <- parseFragment <$> (window >>= location >>= hash)
   
-  pinExists <- pinExists
+  pinExists     <- pinExists
+  passkeyExists <- passkeyExists
 
   window >>= removeFragment
   
   runWidgetInDom "app" $ local baseSyncData \wire -> do
-    appState    <- computeInitialState wire # liftEffect <#> merge {pinExists}
+    appState    <- computeInitialState wire # liftEffect <#> merge {pinExists, passkeyExists}
     app appState fragmentState <|> executeLocalStorageSynOperations wire
 
 -- ---------------------------------------------

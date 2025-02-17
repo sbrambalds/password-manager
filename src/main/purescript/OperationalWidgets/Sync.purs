@@ -65,14 +65,20 @@ updateConnectionState syncDataWire connectionState = send (mapWire _connectionSt
 type Reference = HexString
 type Blob      = HexString 
 
-data SyncOperation = SaveBlobFromRef HexString | SaveBlob Reference Identifier Blob | DeleteBlob HexString Identifier | SaveUser RequestUserCard | DeleteUser HexString
+data SyncOperation  = SaveBlobFromRef HexString 
+                    | SaveBlob Reference Identifier Blob
+                    | DeleteBlob HexString Identifier
+                    | SaveUser RequestUserCard
+                    | ChangeUserPassword HexString RequestUserCard
+                    | DeleteUser HexString
 
 instance showSyncOperation :: Show SyncOperation where
-  show (SaveBlobFromRef ref) = "SaveBlobFromRef " <> show ref
-  show (SaveBlob ref _ _)    = "SaveBlob "        <> show ref
-  show (DeleteBlob ref _)      = "DeleteBlob "      <> show ref
-  show (SaveUser user)       = "SaveUser "        <> show (unwrap user).c
-  show (DeleteUser ref)      = "DeleteUser "      <> show ref
+  show (SaveBlobFromRef ref)    = "SaveBlobFromRef " <> show ref
+  show (SaveBlob ref _ _)       = "SaveBlob "        <> show ref
+  show (DeleteBlob ref _)       = "DeleteBlob "      <> show ref
+  show (SaveUser user)          = "SaveUser "        <> show (unwrap user).c
+  show (ChangeUserPassword c _) = "ChangePassword "  <> show c
+  show (DeleteUser ref)         = "DeleteUser "      <> show ref
 
 derive instance eqSyncOperation :: Eq SyncOperation
 
@@ -119,6 +125,9 @@ executeLocalStorageSynOperations wire = with wire \syncData -> affAction (delay 
         (setItem ("user_" <> toString Hex (unwrap user).c) (stringify $ encode requestUserCardCodec user) =<< localStorage =<< window) # liftEffect
         pure $ syncData #   addOver _completedOperations 1 
                         <<< set     _pendingOperations   tail
+
+      ChangeUserPassword oldC user -> do
+        syncOperation (syncData # set _pendingOperations ((DeleteUser oldC) : (SaveUser user) : tail))
 
       DeleteUser c    -> do
         (removeItem ("user_" <> toString Hex c) =<< localStorage =<< window) # liftEffect

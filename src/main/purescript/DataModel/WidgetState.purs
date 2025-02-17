@@ -6,6 +6,8 @@ import Concur.React (HTML)
 import Data.Bounded (class Ord)
 import Data.Either (Either)
 import Data.Eq (class Eq)
+import Data.Lens (Lens')
+import Data.Lens.Record (prop)
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Tuple (Tuple)
@@ -17,19 +19,36 @@ import DataModel.UserVersions.User (UserPreferences, DonationInfo)
 import Functions.Donations (DonationLevel)
 import IndexFilterView (FilterData)
 import OperationalWidgets.Sync (SyncData)
+import Type.Proxy (Proxy(..))
 import Views.CreateCardView (CardFormData)
 import Views.DeviceSyncView (EnableSync)
 import Views.OverlayView (OverlayInfo)
 import Views.SignupFormView (SignupDataForm)
 import Web.File.File (File)
 
-data Page = Loading (Maybe Page) | Login LoginFormData | Signup SignupDataForm | Main MainPageWidgetState | Donation DonationLevel
+data Page = Loading | Login | Signup | Main | Donation 
+type PagesState = {loading :: Maybe Page, login :: LoginFormData, signup :: SignupDataForm, main :: MainPageWidgetState, donation :: DonationLevel}
+
+_loadingPagesState :: Lens' PagesState (Maybe Page)
+_loadingPagesState = prop (Proxy :: _ "loading")
+
+_loginPagesState :: Lens' PagesState LoginFormData
+_loginPagesState = prop (Proxy :: _ "login")
+
+_signupPagesState :: Lens' PagesState SignupDataForm
+_signupPagesState = prop (Proxy :: _ "signup")
+
+_mainPagesState :: Lens' PagesState MainPageWidgetState
+_mainPagesState = prop (Proxy :: _ "main")
+
+_donationPagesState :: Lens' PagesState DonationLevel
+_donationPagesState = prop (Proxy :: _ "donation")
 
 -- ========================================================================
 
 type PIN = String
 
-data LoginType = CredentialLogin | PinLogin
+data LoginType = CredentialLogin | PinLogin | PasskeyLogin
 
 type LoginFormData = 
   { credentials :: Credentials
@@ -46,7 +65,7 @@ type UserAreaState = {
 , userAreaSubmenus :: Map UserAreaSubmenu Boolean
 }
 
-data UserAreaPage = Export | Import | Delete | Preferences | ChangePassword | Pin | DeviceSync | Donate | About | None
+data UserAreaPage = Export | Import | Delete | Preferences | ChangePassword | Pin | Passkey | DeviceSync | Donate | About | None
 derive instance eqUserAreaPage :: Eq UserAreaPage
 
 data ImportStep = Upload | Selection | Confirm
@@ -69,6 +88,7 @@ type MainPageWidgetState = {
 , credentials        :: Credentials
 , donationInfo       :: Maybe DonationInfo
 , pinExists          :: Boolean
+, passkeyExists      :: Boolean
 , enableSync         :: EnableSync
 , userAreaState      :: UserAreaState
 , cardManagerState   :: CardManagerState
@@ -77,7 +97,7 @@ type MainPageWidgetState = {
 , syncDataWire       :: Maybe ((Wire (Widget HTML) SyncData))
 }
 
-data WidgetState = WidgetState OverlayInfo Page ProxyInfo
+data WidgetState = WidgetState OverlayInfo (Tuple Page PagesState) ProxyInfo
 
 -- -------------------------------------
 

@@ -65,6 +65,7 @@ in  upstream
       , "prelude"
       , "transformers"
       , "tuples"
+      , "unsafe-reference"
       ]
     , repo = "https://github.com/purescript-concur/purescript-concur-core"
     , version = "main"
@@ -208,5 +209,26 @@ in  upstream
   with uint =
     { dependencies = [ "prelude", "maybe", "numbers", "enums", "gen" ]
     , repo = "https://github.com/clipperz/purescript-uint"
+    , version = "clipperz"
+    }
+  with webauthn =
+    { dependencies =
+      [ "aff"
+      , "argonaut-core"
+      , "arraybuffer-types"
+      , "arrays"
+      , "codec"
+      , "codec-argonaut"
+      , "effect"
+      , "either"
+      , "foreign-object"
+      , "maybe"
+      , "prelude"
+      , "transformers"
+      , "tuples"
+      , "unsafe-coerce"
+      , "web-promise"
+      ]
+    , repo = "https://github.com/clipperz/purescript-webauthn"
     , version = "clipperz"
     }

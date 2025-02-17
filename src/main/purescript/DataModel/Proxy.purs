@@ -1,8 +1,8 @@
 module DataModel.Proxy where
 
-
 import Data.Either (Either)
 import Data.Eq (class Eq)
+import Data.Functor (class Functor)
 import Data.HexString (HexString)
 import Data.List (List)
 import Data.Maybe (Maybe(..))
@@ -46,6 +46,9 @@ data ProxyInfo = Static | Online | Offline DataOnLocalStorage
 derive instance eqProxyInfo :: Eq ProxyInfo
 
 data ProxyResponse a = ProxyResponse Proxy a
+
+instance proxyResponseFunctor :: Functor ProxyResponse where
+  map f (ProxyResponse proxy a) = ProxyResponse proxy (f a)
 
 discardResult :: forall a. ProxyResponse a -> ProxyResponse Unit
 discardResult (ProxyResponse proxy _) = ProxyResponse proxy unit

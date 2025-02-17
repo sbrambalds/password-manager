@@ -96,9 +96,9 @@ signupFormView formData = either GoToLoginEvent SignupEvent <$>
 
 submitWidget :: SignupDataForm -> Widget HTML (Either Credentials Credentials)
 submitWidget f@{ username, password } = div [Props.className "signupButton"] [
-                                          simpleButton "signup" "Sign up" (not (isFormValid f)) (Right { username, password })
+                                          simpleButton "signup" "sign up" (not (isFormValid f)) (Right { username, password })
                                         ]
                                         <|>
-                                        (button [Props.onClick] [
+                                        (button [Props.onClick, Props.className "login"] [
                                           span [] [text "login"]
                                         ] *> (focus "loginUsernameInput" # liftEffect) $> (Left { username, password }))

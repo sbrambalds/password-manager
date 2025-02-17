@@ -1,5 +1,6 @@
 module Views.LoginFormView
   ( LoginPageEvent(..)
+  , Password
   , PinCredentials
   , Username
   , credentialLoginWidget
@@ -30,11 +31,13 @@ import Functions.Communication.OneTimeShare (PIN)
 import Functions.Events (focus)
 
 type Username = String
+type Password = String
 
-type PinCredentials = { pin :: Int, user :: Username, passphrase :: String }
+type PinCredentials = { pin :: Int, user :: Username, passphrase :: Password }
 
 data LoginPageEvent   = LoginEvent Credentials
                       | LoginPinEvent PIN
+                      | LoginPasskeyEvent
                       | GoToCredentialLoginEvent Username
                       | GoToSignupEvent Credentials
                       | UpdateForm LoginFormData
@@ -55,6 +58,15 @@ loginPage formData@{credentials, pin, loginType} =
         div [Props.className "loginInputs"] [
           span [] [text "Enter your PIN"]
         , pinLoginWidget (length pin < 5) formData
+        , GoToCredentialLoginEvent credentials.username <$ a [Props.onClick] [text "Login with passphrase"]
+        ]
+      ]
+    PasskeyLogin -> 
+      form [Props.className "loginForm"] [
+        div [Props.className "loginInputs"] [
+          (button [Props.onClick, Props.className "login"] [
+            span [] [text "Passkey Login"]
+          ] $> LoginPasskeyEvent) 
         , GoToCredentialLoginEvent credentials.username <$ a [Props.onClick] [text "Login with passphrase"]
         ]
       ]
@@ -96,8 +108,8 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
                 ] [span [] [text "login"]]
       ])
       <|> 
-      (button [Props.onClick] [
-        text "sign up"
+      (button [Props.onClick, Props.className "signup"] [
+        span [] [text "sign up"]
       ] *> (focus "signupUsernameInput" # liftEffect) $> (GoToSignupEvent credentials)
       )
     )

@@ -16,7 +16,7 @@ import Effect.Class (liftEffect)
 import Functions.Events (online)
 import Functions.Handler.CardManagerEventHandler (handleCardManagerEvent)
 import Functions.Handler.DonationEventHandler (handleDonationPageEvent)
-import Functions.Handler.GenericHandlerFunctions (OperationState)
+import Functions.Handler.GenericHandlerFunctions (OperationState, defaultPagesState, pagesInfoWithLogin)
 import Functions.Handler.LoginPageEventHandler (handleLoginPageEvent)
 import Functions.Handler.SignupPageEventHandler (getLoginFormData, handleSignupPageEvent)
 import Functions.Handler.UserAreaEventHandler (handleUserAreaEvent)
@@ -25,13 +25,15 @@ import Functions.Timer (resetTimer)
 import Views.AppView (PageEvent(..), appView)
 import Views.LoginFormView (LoginPageEvent(..))
 import Views.OverlayView (hiddenOverlayInfo)
-import Views.SignupFormView (emptyDataForm)
 
 app :: forall a. AppState -> Fragment.FragmentState -> Widget HTML a
-app appState@{proxy} fragmentState = case fragmentState of
-    Fragment.Login cred   -> appWithInitialOperation        appState                                                                               (LoginPageEvent $ LoginEvent cred)
-    Fragment.Registration -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (Signup  emptyDataForm)             proxyInfo))
-    _                     -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (Login $ getLoginFormData appState) proxyInfo))
+app appState@{proxy, passkeyExists} fragmentState = case fragmentState of
+    Fragment.Login cred   -> appWithInitialOperation        appState (LoginPageEvent $ LoginEvent cred)
+    Fragment.Registration -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (Tuple Signup defaultPagesState)                 proxyInfo))
+    _                     -> 
+      case passkeyExists of 
+        false             -> appLoop                 (Tuple appState (WidgetState hiddenOverlayInfo (pagesInfoWithLogin (getLoginFormData appState)) proxyInfo))
+        true              -> appWithInitialOperation        appState (LoginPageEvent LoginPasskeyEvent)
 
   where
     proxyInfo :: ProxyInfo

@@ -60,7 +60,7 @@
   , "tuples"
   , "unfoldable"
   , "unsafe-coerce"
-  , "unsafe-reference"
+  , "webauthn"
   , "variant"
   , "web-clipboard"
   , "web-dom"

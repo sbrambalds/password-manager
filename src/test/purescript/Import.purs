@@ -20,7 +20,7 @@ import Data.Unit (Unit)
 import DataModel.CardVersions.Card (Card(..), CardField(..), CardValues(..))
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Functions.Export (prepareUnencryptedExport)
+import Functions.Export (UnencryptedExportVersion(..), prepareUnencryptedExport)
 import Functions.Import (ImportVersion(..), createFile, decodeImport, parseImport, readFile)
 import Test.QuickCheck (Result(..), (<?>))
 import Test.Spec (describe, it, SpecT)
@@ -104,7 +104,7 @@ importSpec  =
     where
       exportImportProp card = do
         let cards     = card : Nil
-        htmlData     <- prepareUnencryptedExport cards # liftEffect
+        htmlData     <- prepareUnencryptedExport Current cards # liftEffect
         let htmlFile  = createFile htmlData
         result       <- runExceptT $ (parseImport =<< readFile (Just htmlFile)) <#> fromFoldable
         case result of

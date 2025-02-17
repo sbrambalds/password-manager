@@ -70,5 +70,3 @@ setPinView pinExists = div [Props._id "pinPage"] [ form [] [
       if   pinExists 
       then simpleButton "reset" "Reset"  false                  Reset
       else simpleButton "save"  "Save"  (not (isPinValid pin)) (SetPin pin)
-
-

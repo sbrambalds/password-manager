@@ -1,0 +1,55 @@
+#exportPage {
+    h1 {
+        padding: 20px;
+        font-size: 20pt;
+    }
+
+    div.content {
+        padding: 0 20px;
+
+        li {
+            padding-bottom: 30px;
+
+            h3 { font-size: 18px; }
+
+            div.description {
+                p {
+                    font-size: 10pt;
+                    margin-bottom: 7px;
+                    line-height: 1.4em;
+                    color: #bbb;  
+
+                }
+                
+                .important {
+                    font-weight: bold;
+                    color: white; 
+                }
+            }
+
+            div.description {
+                padding: 10px 0px 20px 0px;
+            }
+            
+            div.actions {
+                display: flex;
+                justify-content: space-between;
+
+                & > div:first-child {
+                    margin-right: 10px;
+                }
+            }
+            
+            button {
+                display: inline-block;
+                color: white;
+                background-color: #ff9900;
+                font-size: 14pt;
+                border: 1px solid white;
+                padding: 10px 14px;
+                // margin-bottom: 5px;
+            }
+
+        }
+    }
+}

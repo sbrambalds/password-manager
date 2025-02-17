@@ -490,7 +490,7 @@ div#homePage {
                         // background-color: pink;
                         flex: auto;
                         display: flex;
-                        height: 100%;
+                        height: 100dvh;
 
                         & > .mask {
 							@include mask;
@@ -503,7 +503,7 @@ div#homePage {
                             flex-direction: column;
 
                             width: 100%;
-                            height: 100%;
+                            height: 100dvh;
                             z-index: 20;
                             background-color: white;
                             box-shadow: -5px 0px 5px 0px rgba(0, 0, 0, 0.75);

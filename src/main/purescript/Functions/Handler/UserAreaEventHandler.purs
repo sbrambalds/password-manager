@@ -520,7 +520,7 @@ logoutSteps state@{username, hash: hashFunc, proxy, srpConf, pinExists, passkeyE
     passkeyUsername <- (liftEffect $ window >>= localStorage >>= getItem passkeyUsernameKey) # (runStep $ message)    
 
     pure $ Tuple 
-            ((resetState state) {pinExists = pinExists , proxy = proxy'})
+            ((resetState state) {pinExists = pinExists, passkeyExists = passkeyExists , proxy = proxy'})
             (WidgetState
               hiddenOverlayInfo
               ( pagesInfoWithLogin emptyLoginFormData { credentials = emptyCredentials {username = logoutTypeUsername username logoutType}

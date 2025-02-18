@@ -33,6 +33,7 @@ div#homePage {
 					height: 48px;
 					justify-content: space-between;
 					background-color: $main-color;
+                    max-width: 100vw;
 	
 					div {
 						padding: 4px;
@@ -52,35 +53,41 @@ div#homePage {
 							button {
 								cursor: pointer;
 							}
+                            align-content: center;
 							// flex: 1;
 			
 						}
 	
 						&.selection {
-							font-size: 28pt;
-							margin-top: 1px;
-	
-							span {
-								&::before {
-									content: "tag";
-									font-family: 'clipperz-icons';
-									font-size: 14pt;
-									display: inline-block;
-									padding-right: 7px;
-								}
-	
-								font-family: 'clipperz-font';
-								font-size: 18pt;
-								display: block;
-								margin-top: 8px;
+							overflow: hidden;
+                            
+                            span {
+                                display: inline-block;
+                                &::before {
+                                    content: "tag";
+                                    font-family: 'clipperz-icons';
+                                    font-size: 14pt;
+                                    display: inline-block;
+                                    padding-right: 7px;
+                                    padding-top: 5px;
+                                }
+                                
+                                text-overflow: ellipsis;
+                                font-family: "clipperz-font";
+                                font-size: 18pt;
+                                width: 100%;
+                                overflow: hidden;
+                                white-space: nowrap;
 							}
+
+                            align-content: center;
 						}
 	
 						&.menu {
 							button {
 								cursor: pointer;
 							}
-							align-content: flex-end;
+							align-content: center;
 							// flex: 1;
 						}
 
@@ -359,6 +366,9 @@ div#homePage {
 										padding-left: 1px;
 										padding-right: 30px;
 										line-height: 27px;
+
+                                        max-width: 100%;
+                                        overflow-wrap: break-word;
 									}
 								}
 							}
@@ -562,6 +572,7 @@ div#homePage {
                                     ul {
                                         display: flex;
                                         flex-wrap: wrap;
+                                        width: 100%;
 
                                         &:before {
                                             content: "tag";
@@ -576,6 +587,15 @@ div#homePage {
                                             display: flex;
                                             flex-direction: row-reverse;
                                             align-items: center;
+                                            max-width: 100%;
+                                            
+                                            span {
+                                                // width: 90%;
+                                                display: inline-block;
+                                                text-overflow: ellipsis;
+                                                overflow: hidden;
+                                                white-space: nowrap;
+                                            }
 
                                             &:has(button:hover) {
                                                 font-weight: bold;

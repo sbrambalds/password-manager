@@ -135,7 +135,7 @@ createCardView cardFormData@{card} originalCard allTags passwordGeneratorSetting
     tagSignal :: String -> Widget HTML String
     tagSignal tag = li [] [
       simpleButton "remove" "remove tag" false unit
-    , text tag
+    , span [] [text tag]
     ] $> tag
 
     inputTagSignal :: String -> Set String -> Widget HTML (Tuple String Boolean)

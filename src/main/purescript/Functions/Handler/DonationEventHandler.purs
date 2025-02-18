@@ -4,7 +4,7 @@ module Functions.Handler.DonationEventHandler
   where
 
 import Concur.Core (Widget)
-import Concur.React (HTML)
+import Concur.React (HTML, affAction)
 import Control.Alternative (pure, (*>))
 import Control.Applicative ((<#>))
 import Control.Bind (bind, discard, (=<<), (>>=))
@@ -26,7 +26,7 @@ import Effect.Class (liftEffect)
 import Effect.Now (nowDateTime)
 import Functions.Communication.SyncBackend (syncBackend)
 import Functions.Donations (DonationLevel(..), computeDonationLevel)
-import Functions.Events (focus)
+import Functions.Events (effectDelayed, focus)
 import Functions.Handler.GenericHandlerFunctions (OperationState, defaultErrorPage, defaultPagesState, handleOperationResult, noOperation, runStep, syncLocalStorage)
 import Functions.User (computeUserInfoSyncSteps)
 import Views.AppView (emptyMainPageWidgetState)
@@ -52,6 +52,7 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, 
                         , syncDataWire: Just syncDataWire
                         }
   let connectionState = {proxy, hashFunc, srpConf, c, p}
+  let defaultPagesInfo = Tuple Main $ set _mainPagesState defaultMainState defaultPagesState
 
   case donationPageEvent of
     UpdateDonationLevel days  ->
@@ -98,7 +99,9 @@ handleDonationPageEvent donationPageEvent state@{c: Just c, p: Just p, srpConf, 
       # runExceptT
       >>= handleOperationResult state defaultErrorPage true Black
 
-    CloseDonationPage -> (focus "mainView" # liftEffect) *> noOperation (Tuple state $ WidgetState hiddenOverlayInfo (Tuple Main $ set _mainPagesState defaultMainState defaultPagesState) proxyInfo)
+    CloseDonationPage -> 
+      (effectDelayed 10.0 (focus "mainView" # liftEffect) # affAction) *>
+      (noOperation (Tuple state $ WidgetState hiddenOverlayInfo defaultPagesInfo proxyInfo))
   where
     spinnerWidgetState :: Tuple Page PagesState -> String -> WidgetState
     spinnerWidgetState pagesInfo message = WidgetState (spinnerOverlay message Black) pagesInfo proxyInfo

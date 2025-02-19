@@ -4,11 +4,12 @@
 FROM  node:18.15.0 AS frontend
 WORKDIR /app
 COPY ./src ./src
-COPY package.json     	package.json
-COPY packages.dhall   	packages.dhall
-COPY spago.dhall      	spago.dhall
-COPY webpack.config.js	webpack.config.js
-COPY package-lock.json	package-lock.json
+COPY package.json     	  package.json
+COPY packages.dhall   	  packages.dhall
+COPY spago.dhall      	  spago.dhall
+COPY webpack.config.js	  webpack.config.js
+COPY package-lock.json	  package-lock.json
+COPY clipperz.webmanifest clipperz.webmanifest
 COPY --chown=root ./.git ./.git
 
 RUN npm ci

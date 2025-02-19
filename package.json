@@ -13,13 +13,14 @@
         "keep-building": "spago --jobs 10 build --watch --purs-args '--codegen js,sourcemaps -o ./target/output.purescript'",
         "keep-packaging": "webpack watch --config ./webpack.config.js --stats verbose",
         "rebuild": "clear; npm run clean; npm run build",
-		"checksum": "webpack build --config ./webpack.config.js --env production 1>/dev/null && cat ./target/output.webpack/index.html | openssl sha1",
+        "checksum": "webpack build --config ./webpack.config.js --env production 1>/dev/null && cat ./target/output.webpack/index.html | openssl sha1",
         "test-browser": "(trap 'kill 0' SIGINT; webpack watch --config ./webpack.test.config.js & webpack serve --config ./webpack.test.config.js --stats verbose)",
         "upgrade-set": "spago upgrade-set"
     },
     "devDependencies": {
         "copy-webpack-plugin": "^12.0.2",
         "css-loader": "^6.7.3",
+        "emit-file-webpack-plugin": "^2.0.1",
         "html-inline-script-webpack-plugin": "^3.1.0",
         "html-webpack-plugin": "^5.5.0",
         "process": "^0.11.10",

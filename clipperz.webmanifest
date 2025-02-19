@@ -1,0 +1,51 @@
+{
+  "name": "Clipperz - Online Password Manager",
+  "short_name": "Clipperz",
+  "id": "https://www.clipperz.is/app",
+  "start_url": "/api/static/index.html",
+  "display": "standalone",
+  "background_color": "#9900ce",
+  "theme_color": "#9900ce",
+  
+  "lang": "en",
+  "dir": "ltr",
+  
+  "icons": [
+    {
+      "src": "icons/icon_x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "purpose": "maskable",
+      "sizes": "512x512",
+      "src": "icons/maskable_icon_x512.png",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/screenshot_wide.png",
+      "form_factor": "wide",
+      "platform": "macos",
+      "sizes": "3100x2334"
+    },
+    {
+      "src": "screenshots/screenshot_narrow_index.png",
+      "form_factor": "narrow",
+      "label": "cards index",
+      "platform": "ios",
+      "sizes": "1179x2556"
+    },
+    {
+      "src": "screenshots/screenshot_narrow_card.png",
+      "form_factor": "narrow",
+      "label": "card details",
+      "platform": "ios",
+      "sizes": "1179x2556"
+    }
+  ],
+
+  "categories": ["productivity", "utilities", "security"],
+  "description": "Online vault and password manager that knows nothing about you and your data"
+}

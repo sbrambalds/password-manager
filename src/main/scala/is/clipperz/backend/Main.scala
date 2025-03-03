@@ -97,11 +97,7 @@ object Main extends zio.ZIOAppDefault:
                     
                     ZLayer.succeed(config),
                     ZLayer.succeed(nettyConfig),
-                    Server.customized,
-                    
-                    datadog.datadogLayer,
-                    ZLayer.succeed(datadog.DatadogConfig("dd-agent", 8125)),
-                    ZLayer.succeed(MetricsConfig(100.millis)),
+                    Server.customized
                 )
 
         else ZIO.logFatal("Not enough arguments")

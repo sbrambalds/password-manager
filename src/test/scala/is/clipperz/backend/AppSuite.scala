@@ -25,8 +25,8 @@ import is.clipperz.backend.functions.crypto.HashFunction
 // import is.clipperz.backend.functions.FileSystem
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
-import is.clipperz.backend.services.UserArchive
-import is.clipperz.backend.services.BlobArchive
+import is.clipperz.backend.services.UserManager
+import is.clipperz.backend.services.BlobManager
 import is.clipperz.backend.services.TollManager
 import is.clipperz.backend.services.SrpManager
 import is.clipperz.backend.Main.ClipperzEnvironment
@@ -46,7 +46,7 @@ import is.clipperz.backend.services.SRPStep1Data
 import is.clipperz.backend.services.SRPStep1Response.apply
 import is.clipperz.backend.services.SRPStep1Response
 import is.clipperz.backend.services.SRPStep2Data
-import is.clipperz.backend.services.OneTimeShareArchive
+import is.clipperz.backend.services.OneTimeShareManager
 import java.net.InetAddress
 import is.clipperz.backend.services.RequestUserCard
 import is.clipperz.backend.services.CardsSignupData
@@ -55,19 +55,19 @@ import is.clipperz.backend.services.SRPVersion
 
 object AppSpec extends ZIOSpecDefault:
     val app = Main.completeClipperzBackend
-    val blobBasePath            = FileSystem.default.getPath("target", "tests", "archive", "blobs")
-    val userBasePath            = FileSystem.default.getPath("target", "tests", "archive", "users")
-    val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "archive", "one_time_share")
+    val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
+    val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
+    val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
 
-    val keyBlobArchiveFolderDepth = 16
+    val keyBlobManagerFolderDepth = 16
 
     val environment =
         PRNG.live ++
         (PRNG.live >>> SessionManager.live()) ++
-        UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++
-        BlobArchive.fs(blobBasePath, keyBlobArchiveFolderDepth, false) ++
-        OneTimeShareArchive.fs(oneTimeShareBasePath, keyBlobArchiveFolderDepth, false) ++
-        ((UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
+        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
+        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
+        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
+        ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
         (PRNG.live >>> TollManager.live)
 
     val srpFunctions = new SrpFunctionsV6a()

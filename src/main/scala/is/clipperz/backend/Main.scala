@@ -3,7 +3,7 @@ package is.clipperz.backend
 import is.clipperz.backend.apis.{ blobsApi, loginApi, logoutApi, staticApi, usersApi, oneTimeShareApi }
 import is.clipperz.backend.functions.{ customErrorHandler }
 import is.clipperz.backend.middleware.{ hashcash, metrics }
-import is.clipperz.backend.services.{ BlobArchive, PRNG, SessionManager, SrpManager, TollManager, UserArchive, OneTimeShareArchive }
+import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpManager, TollManager, UserManager, OneTimeShareManager }
 import is.clipperz.backend.services.ChallengeType
 
 import zio.nio.file.{ Files, FileSystem }
@@ -27,7 +27,7 @@ object Main extends zio.ZIOAppDefault:
         Runtime.removeDefaultLoggers ++ Runtime.addLogger(CustomLogger.basicColoredLogger(LogLevel.Info)) // >>> SLF4J.slf4j(logFormat)
 
     type ClipperzEnvironment =
-        PRNG & SessionManager & TollManager & UserArchive & BlobArchive & OneTimeShareArchive & SrpManager
+        PRNG & SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager
 
     type ClipperzHttpApp = Routes[
         ClipperzEnvironment
@@ -40,7 +40,6 @@ object Main extends zio.ZIOAppDefault:
         ++  logoutApi
         ++  blobsApi        @@ hashcash(ChallengeType.MESSAGE,  ChallengeType.MESSAGE)
         ++  oneTimeShareApi @@ hashcash(ChallengeType.SHARE,    ChallengeType.SHARE)
-        // ++  staticApi
     )
     .handleErrorCauseZIO(customErrorHandler)
   
@@ -53,7 +52,7 @@ object Main extends zio.ZIOAppDefault:
 
     val completeClipperzBackend: ClipperzHttpApp = clipperzBackend @@ middlewares
 
-    val keyBlobArchiveFolderDepth = 16
+    val keyValueStorageFolderDepth = 16
 
     val run = ZIOAppArgs.getArgs.flatMap { args =>
         if args.length == 4
@@ -90,9 +89,9 @@ object Main extends zio.ZIOAppDefault:
                     PRNG.live,
                     SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
                     TollManager.live,
-                    UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, true),
-                    BlobArchive.fs(blobBasePath, keyBlobArchiveFolderDepth, true),
-                    OneTimeShareArchive.fs(oneTimeShareBasePath, keyBlobArchiveFolderDepth, true),
+                    UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
+                    BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
+                    OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
                     SrpManager.v6a(),
                     
                     ZLayer.succeed(config),

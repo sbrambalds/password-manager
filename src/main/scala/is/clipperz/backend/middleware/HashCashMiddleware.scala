@@ -5,7 +5,7 @@ import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.{ fromString, customMapError }
 import is.clipperz.backend.Main.ClipperzHttpApp
 import is.clipperz.backend.LogAspect
-import is.clipperz.backend.services.{ ChallengeType, SessionManager, TollManager, TollChallenge, PRNG, BlobArchive, OneTimeShareArchive, SessionKey, SrpManager, UserArchive }
+import is.clipperz.backend.services.{ ChallengeType, SessionManager, TollManager, TollChallenge, PRNG, SessionKey, SrpManager }
 
 import java.util.NoSuchElementException
 

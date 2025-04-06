@@ -24,11 +24,11 @@ import zio.ZLayer
 import zio.test.TestConsole
 import is.clipperz.backend.TestUtilities
 
-object UserArchiveSpec extends ZIOSpecDefault:
-  val userBasePath = FileSystem.default.getPath("target", "tests", "archive", "users")
+object UserManagerSpec extends ZIOSpecDefault:
+  val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
 
-  val keyBlobArchiveFolderDepth = 16
-  val environment = UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false)
+  val keyBlobManagerFolderDepth = 16
+  val environment = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false)
 
   val c = HexString("abcdef0192837465")
   val testUser = RemoteUserCard(
@@ -46,57 +46,57 @@ object UserArchiveSpec extends ZIOSpecDefault:
     (HexString("masterKeyContent_test"), MasterKeyEncodingVersion("masterKeyEncodingVersion_test"))
   )
 
-  def spec = suite("UserArchive")(
+  def spec = suite("UserManager")(
     test("getUser - fail") {
       for {
-        archive <- ZIO.service[UserArchive]
-        user <- archive.getUser(c)
+        Manager <- ZIO.service[UserManager]
+        user <- Manager.getUser(c)
       } yield assertTrue(user == None)
     } +
       test("saveBlob - success") {
         for {
-          archive <- ZIO.service[UserArchive]
-          fiber <- archive.saveUser(testUser, false).fork
+          Manager <- ZIO.service[UserManager]
+          fiber <- Manager.saveUser(testUser, false).fork
           _ <- TestClock.adjust(Duration.fromMillis(10))
           res <- fiber.join
-          user <- archive.getUser(c)
+          user <- Manager.getUser(c)
         } yield assertTrue(user == Some(testUser), res == c)
       } +
       test("saveBlob with no overwrite - fail") {
         for {
-          archive <- ZIO.service[UserArchive]
-          fiber <- archive.saveUser(testUser2, false).fork
+          Manager <- ZIO.service[UserManager]
+          fiber <- Manager.saveUser(testUser2, false).fork
           _ <- TestClock.adjust(Duration.fromMillis(10))
           res <- assertZIO(fiber.await)(fails(isSubtype[ResourceConflictException](anything)))
         } yield res
       } +
       test("saveBlob with overwrite - success") {
         for {
-          archive <- ZIO.service[UserArchive]
-          fiber <- archive.saveUser(testUser2, true).fork
+          Manager <- ZIO.service[UserManager]
+          fiber <- Manager.saveUser(testUser2, true).fork
           _ <- TestClock.adjust(Duration.fromMillis(10))
           res <- fiber.join
-          user <- archive.getUser(c)
+          user <- Manager.getUser(c)
         } yield assertTrue(user == Some(testUser2), res == c)
       } +
       test("getUser - success") {
         for {
-          archive <- ZIO.service[UserArchive]
-          user <- archive.getUser(c)
+          Manager <- ZIO.service[UserManager]
+          user <- Manager.getUser(c)
         } yield assertTrue(user == Some(testUser2))
       } +
       test("deleteBlob - success") {
         for {
-          archive <- ZIO.service[UserArchive]
-          _         <- archive.deleteUser(testUser.c)
+          Manager <- ZIO.service[UserManager]
+          _         <- Manager.deleteUser(testUser.c)
           resDelete <- ZIO.succeed(true)  //  TODO: fix this hack; Giulio Cesare 26-02-2024
-          resGet <- archive.getUser(c).map(_.isDefined)
+          resGet <- Manager.getUser(c).map(_.isDefined)
         } yield assertTrue(resDelete, !resGet)
       } +
       test("deleteBlob - fail - not present") {
         for {
-          archive <- ZIO.service[UserArchive]
-          res <- assertZIO(archive.deleteUser(testUser2.c).exit)(fails(isSubtype[ResourceNotFoundException](anything)))
+          Manager <- ZIO.service[UserManager]
+          res <- assertZIO(Manager.deleteUser(testUser2.c).exit)(fails(isSubtype[ResourceNotFoundException](anything)))
         } yield res
       }
   ).provideSomeLayerShared(environment) @@

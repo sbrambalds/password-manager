@@ -8,9 +8,8 @@ import is.clipperz.backend.data.HexString.{ bytesToHex }
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
+import is.clipperz.backend.functions.KeyValueStorage
 
-// import java.io.{ File, FileOutputStream, FileNotFoundException, IOException }
-// import java.nio.file.Path
 import java.io.{ FileNotFoundException, IOException }
 import zio.nio.file.{ Files, Path }
 import java.security.MessageDigest
@@ -40,14 +39,14 @@ implicit val encoder: JsonEncoder[DateTime] = JsonEncoder[String].contramap(_.to
 
 // ----------------------------------------------------------------------------
 
-trait OneTimeShareArchive:
+trait OneTimeShareManager:
     def getSecret(id: SecretId): Task[(OneTimeSecret, Long)]
     def saveSecret(content: ZStream[Any, Throwable, Byte]): Task[SecretId]
     def deleteSecret(id: SecretId): Task[Unit]
 
-object OneTimeShareArchive:
+object OneTimeShareManager:
 
-    case class FileSystemOneTimeShareArchive(keyBlobArchive: KeyBlobArchive) extends OneTimeShareArchive:
+    case class KeyValueOneTimeShareManager(keyBlobArchive: KeyValueStorage) extends OneTimeShareManager:
         override def getSecret(id: SecretId): Task[(OneTimeSecret, Long)] =
             keyBlobArchive.getBlob(id).flatMap((content, contentLength) => fromStream[OneTimeSecret](content).zip(ZIO.succeed(contentLength)))
         
@@ -73,16 +72,6 @@ object OneTimeShareArchive:
   // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
     def initializeOneTimeShareArchive(basePath: Path): Task[Unit] =
-        // ZIO.attempt:
-        //     val file = basePath.toFile()
-        //     val tempFolderSuccessfullyCreated: Boolean =
-        //         (file match
-        //             case null => None
-        //             case _ => Some(file)
-        //         ).map(p => if p.exists() then true else p.mkdirs())
-        //         .getOrElse(false)
-        //     if (tempFolderSuccessfullyCreated == false)
-        //         throw new IOException("Failed initialization of temporary blob directory")
 
         ZIO.attempt:
             Files.exists(basePath)
@@ -97,10 +86,13 @@ object OneTimeShareArchive:
                     throw new IOException("Failed initialization of temporary blob directory")
             )
 
-    def fs(
+    def fileSystem(
         basePath: Path,
         levels: Int,
         requireExistingPath: Boolean = true,
-    ): ZLayer[Any, Throwable, OneTimeShareArchive] =
-        val keyBlobArchive = KeyBlobArchive.FileSystemKeyBlobArchive(basePath, levels, requireExistingPath)
-        ZLayer.fromZIO[Any, Throwable, OneTimeShareArchive](keyBlobArchive.map(new FileSystemOneTimeShareArchive(_)))
+    ): ZLayer[Any, Throwable, OneTimeShareManager] =
+        ZLayer.scoped(
+            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueOneTimeShareManager(_))
+        )
+
+    def sqlLite = ???

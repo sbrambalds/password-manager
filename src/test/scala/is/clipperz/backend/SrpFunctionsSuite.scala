@@ -1,6 +1,5 @@
 package is.clipperz.backend.apis
 
-// import java.nio.file.FileSystems
 import zio.ZIO
 import zio.stream.ZStream
 import zio.test.Assertion.isTrue
@@ -13,7 +12,6 @@ import is.clipperz.backend.functions.Conversions.{ bytesToBigInt, bigIntToBytes 
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.crypto.HashFunction.hashSHA1
 import is.clipperz.backend.functions.crypto.KeyDerivationFunction.kdfSHA1
-import is.clipperz.backend.services.UserArchive
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
 import is.clipperz.backend.services.SrpManager

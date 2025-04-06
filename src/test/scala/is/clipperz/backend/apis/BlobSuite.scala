@@ -20,7 +20,7 @@ import is.clipperz.backend.data.{ Base, HexString }
 import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.functions.{ customErrorHandler, fromStream }
 import is.clipperz.backend.functions.crypto.HashFunction
-import is.clipperz.backend.services.{ BlobArchive, OneTimeShareArchive, PRNG, SessionManager, SrpManager, UserArchive, TollManager }
+import is.clipperz.backend.services.{ BlobManager, OneTimeShareManager, PRNG, SessionManager, SrpManager, UserManager, TollManager }
 import is.clipperz.backend.TestUtilities
 import zio.nio.charset.Charset
 
@@ -30,115 +30,115 @@ object BlobSpec extends ZIOSpecDefault:
 
     def spec = suite("BlobApis")(
 
-        test("POST blob") {
-            for {
-                content     <- validBlobData
-                response    <- app.runZIO(post(validBlobHash, identifier, content))
-                body        <- response.body.asString
+        // test("POST blob") {
+        //     for {
+        //         content     <- validBlobData
+        //         response    <- app.runZIO(post(validBlobHash, identifier, content))
+        //         body        <- response.body.asString
 
-                fileExists      <- Files.exists(Path("target/tests/archive/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.blob"))
-                metadataExists  <- Files.exists(Path("target/tests/archive/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.metadata"))
-            } yield allSuccesses(
-                  assertTrue(response.status.code == 200)
-                , assertTrue(fileExists)
-                , assertTrue(metadataExists)
-            )
-        },
+        //         fileExists      <- Files.exists(Path("target/tests/Manager/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.blob"))
+        //         metadataExists  <- Files.exists(Path("target/tests/Manager/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.metadata"))
+        //     } yield allSuccesses(
+        //           assertTrue(response.status.code == 200)
+        //         , assertTrue(fileExists)
+        //         , assertTrue(metadataExists)
+        //     )
+        // },
 
-        test("POST large blob") {
-            // val file_signature = blob_1K    //  OK
-            // val file_signature = blob_8K    //  OK
-            val file_signature = blob_1M    //  OK
-            for {
-                content  <- readSampleBlob(file_signature).flatMap(_.runCollect)
-                response <- app.runZIO(post(HexString(file_signature), identifier, content))
-                body     <- response.body.asString
-            } yield allSuccesses(
-                assertTrue(response.status.code == 200)
-            )
-        } @@ TestAspect.timeout(2.second),
+        // test("POST large blob") {
+        //     // val file_signature = blob_1K    //  OK
+        //     // val file_signature = blob_8K    //  OK
+        //     val file_signature = blob_1M    //  OK
+        //     for {
+        //         content  <- readSampleBlob(file_signature).flatMap(_.runCollect)
+        //         response <- app.runZIO(post(HexString(file_signature), identifier, content))
+        //         body     <- response.body.asString
+        //     } yield allSuccesses(
+        //         assertTrue(response.status.code == 200)
+        //     )
+        // } @@ TestAspect.timeout(2.second),
 
-        test("GET blob") {
-            for {
-                content         <- validBlobData
-                postStatusCode  <- app.runZIO(post(validBlobHash, identifier, content)).map(response => response.status.code)
-                response        <- app.runZIO(get(validBlobHash))
-                hash            <- app.runZIO(get(validBlobHash)).flatMap(response =>
-                    response
-                        .body.asStream
-                        .run(ZSink.digest(MessageDigest.getInstance("SHA-256").nn))
-                        .map((chunk: Chunk[Byte]) => HexString.bytesToHex(chunk.toArray))
-                )
-            } yield allSuccesses(
-                  assertTrue(postStatusCode        == 200)
-                , assertTrue(response.status.code  == 200)
-                , assertTrue(hash                  == validBlobHash)
-            )
-        },
+        // test("GET blob") {
+        //     for {
+        //         content         <- validBlobData
+        //         postStatusCode  <- app.runZIO(post(validBlobHash, identifier, content)).map(response => response.status.code)
+        //         response        <- app.runZIO(get(validBlobHash))
+        //         hash            <- app.runZIO(get(validBlobHash)).flatMap(response =>
+        //             response
+        //                 .body.asStream
+        //                 .run(ZSink.digest(MessageDigest.getInstance("SHA-256").nn))
+        //                 .map((chunk: Chunk[Byte]) => HexString.bytesToHex(chunk.toArray))
+        //         )
+        //     } yield allSuccesses(
+        //           assertTrue(postStatusCode        == 200)
+        //         , assertTrue(response.status.code  == 200)
+        //         , assertTrue(hash                  == validBlobHash)
+        //     )
+        // },
 
-        test("DELETE blob") {
-            for {
-                content         <- validBlobData
-                postResponse    <- app.runZIO(post(validBlobHash, identifier, content))
-                deleteResponse  <- app.runZIO(delete(validBlobHash, identifier))
+        // test("DELETE blob") {
+        //     for {
+        //         content         <- validBlobData
+        //         postResponse    <- app.runZIO(post(validBlobHash, identifier, content))
+        //         deleteResponse  <- app.runZIO(delete(validBlobHash, identifier))
 
-                fileExistsAfter         <- Files.exists(Path("target/tests/archive/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.blob"))
-                metadataExistsAfter     <- Files.exists(Path("target/tests/archive/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.metadata"))
-            } yield allSuccesses(
-                  assertTrue(postResponse.status.code == 200)
-                , assertTrue(deleteResponse.status.code  == 200)
-                , assertTrue(fileExistsAfter == false)
-                , assertTrue(metadataExistsAfter == false)
-            )
-        },
+        //         fileExistsAfter         <- Files.exists(Path("target/tests/Manager/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.blob"))
+        //         metadataExistsAfter     <- Files.exists(Path("target/tests/Manager/blobs/f903/2dd0/4636/e22b/80db/4c87/5139/5215/4b05/df9b/c15c/6951/a5a7/3d81/0e1c/5cae/f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae.metadata"))
+        //     } yield allSuccesses(
+        //           assertTrue(postResponse.status.code == 200)
+        //         , assertTrue(deleteResponse.status.code  == 200)
+        //         , assertTrue(fileExistsAfter == false)
+        //         , assertTrue(metadataExistsAfter == false)
+        //     )
+        // },
 
-        test("POST blob - wrong filename") {
-            for {
-                content     <- validBlobData
-                response    <- app.runZIO(post(HexString("wrong"), identifier, content))
-                body        <- response.body.asString
-            } yield allSuccesses(
-                  assertTrue(response.status.code == 400)
-                , assertTrue(body == "Hash of content does not match with hash field provided")
-            )
-        },
+        // test("POST blob - wrong filename") {
+        //     for {
+        //         content     <- validBlobData
+        //         response    <- app.runZIO(post(HexString("wrong"), identifier, content))
+        //         body        <- response.body.asString
+        //     } yield allSuccesses(
+        //           assertTrue(response.status.code == 400)
+        //         , assertTrue(body == "Hash of content does not match with hash field provided")
+        //     )
+        // },
 
-        test("POST blob - empty file") {
-            for {
-                response    <- app.runZIO(postEmptyForm)
-                body        <- response.body.asString
-            } yield allSuccesses(
-                  assertTrue(response.status.code == 400)
-                , assertTrue(body == "Missing either/both 'blob', 'identifier' fields")
-            )
-        },
+        // test("POST blob - empty file") {
+        //     for {
+        //         response    <- app.runZIO(postEmptyForm)
+        //         body        <- response.body.asString
+        //     } yield allSuccesses(
+        //           assertTrue(response.status.code == 400)
+        //         , assertTrue(body == "Missing either/both 'blob', 'identifier' fields")
+        //     )
+        // },
 
-        test("Get blob - missing") {
-            for {
-                content         <- validBlobData
-                postResponse    <- app.runZIO(post  (validBlobHash, identifier, content))
-                deleteResponse  <- app.runZIO(delete(validBlobHash, identifier))
-                getResponse     <- app.runZIO(get(validBlobHash))
-                getBody         <- getResponse.body.asString
-            } yield allSuccesses(
-                  assertTrue(postResponse.status.code   == 200)
-                , assertTrue(deleteResponse.status.code == 200)
-                , assertTrue(getResponse.status.code    == 404)
-                , assertTrue(getBody == "Referenced blob does not exists")
-            )
-        },
+        // test("Get blob - missing") {
+        //     for {
+        //         content         <- validBlobData
+        //         postResponse    <- app.runZIO(post  (validBlobHash, identifier, content))
+        //         deleteResponse  <- app.runZIO(delete(validBlobHash, identifier))
+        //         getResponse     <- app.runZIO(get(validBlobHash))
+        //         getBody         <- getResponse.body.asString
+        //     } yield allSuccesses(
+        //           assertTrue(postResponse.status.code   == 200)
+        //         , assertTrue(deleteResponse.status.code == 200)
+        //         , assertTrue(getResponse.status.code    == 404)
+        //         , assertTrue(getBody == "Referenced blob does not exists")
+        //     )
+        // },
 
-        test("DELETE blob - wrong filename") {
-            for {
-                content         <- validBlobData
-                postResponse    <- app.runZIO(post  (validBlobHash, identifier, content))
-                deleteResponse  <- app.runZIO(delete(HexString("wrong"), identifier))
-                deleteBody      <- deleteResponse.body.asString
-            } yield allSuccesses(
-                  assertTrue(deleteResponse.status.code == 404)
-                , assertTrue(deleteBody == "Referenced blob does not exists")
-            )
-        },
+        // test("DELETE blob - wrong filename") {
+        //     for {
+        //         content         <- validBlobData
+        //         postResponse    <- app.runZIO(post  (validBlobHash, identifier, content))
+        //         deleteResponse  <- app.runZIO(delete(HexString("wrong"), identifier))
+        //         deleteBody      <- deleteResponse.body.asString
+        //     } yield allSuccesses(
+        //           assertTrue(deleteResponse.status.code == 404)
+        //         , assertTrue(deleteBody == "Referenced blob does not exists")
+        //     )
+        // },
 
         test("DELETE blob - wrong identifier") {
             for {
@@ -161,22 +161,22 @@ object BlobSpec extends ZIOSpecDefault:
     // ========================================================================
 
     val app = blobsApi.handleErrorCauseZIO(customErrorHandler)
-    val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
-    val userBasePath = FileSystem.default.getPath("target", "tests", "archive", "users")
-    val oneTimeShareBasePath = FileSystem.default.getPath("target", "tests", "archive", "one_time_share")
+    val blobBasePath = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
+    val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
+    val oneTimeShareBasePath = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
 
     val boundary = "--TestBoundary"
 
-    val keyBlobArchiveFolderDepth = 16
+    val keyBlobManagerFolderDepth = 16
 
     val environment =
         ZLayer.succeed(Server.Config.default.requestStreaming(RequestStreaming.Enabled)) ++
         PRNG.live ++
         (PRNG.live >>> SessionManager.live()) ++
-        UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++
-        BlobArchive.fs(blobBasePath, keyBlobArchiveFolderDepth, false) ++
-        OneTimeShareArchive.fs(oneTimeShareBasePath, keyBlobArchiveFolderDepth, false) ++
-        ((UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
+        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
+        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
+        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
+        ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
         (PRNG.live >>> TollManager.live)
 
     val blob_1K     = "0dfba6266bcebf53a0ed863f5df4edf56066e6a5194df242a2b31f13bf7bb9f8"

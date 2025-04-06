@@ -12,7 +12,7 @@ import is.clipperz.backend.LogAspect
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.fromStream
-import is.clipperz.backend.services.{ SessionManager, SrpManager, SRPStep1Data, SRPStep2Data, OneTimeShareArchive, OneTimeSecret }
+import is.clipperz.backend.services.{ SessionManager, SrpManager, SRPStep1Data, SRPStep2Data, OneTimeShareManager, OneTimeSecret }
 
 import zio.{ ZIO, Cause, Chunk }
 import zio.metrics.Metric
@@ -46,9 +46,9 @@ object OneTimeSecretData:
 val oneTimeShareApi = Routes (
     Method.POST / "api" / "share" -> handler : (request: Request) =>
         ZIO
-        .service[OneTimeShareArchive]
+        .service[OneTimeShareManager]
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((archive: OneTimeShareArchive, stream: ZStream[Any, Throwable, Byte]) =>
+        .flatMap((archive: OneTimeShareManager, stream: ZStream[Any, Throwable, Byte]) =>
             fromStream[OneTimeSecretData](stream)
             .map ((secretData: OneTimeSecretData) => 
                 val start = DateTime.now().withZone(DateTimeZone.UTC).nn
@@ -64,7 +64,7 @@ val oneTimeShareApi = Routes (
     ,
     Method.GET / "api" / "redeem" / string("id") -> handler : (id: String, request: Request)=>
         ZIO
-        .service[OneTimeShareArchive]
+        .service[OneTimeShareManager]
         .flatMap(archive =>
             archive.getSecret(id).flatMap((oneTimeSecret, contentLength) => 
                 if (oneTimeSecret.expirationDate < DateTime.now())

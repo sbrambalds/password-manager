@@ -99,7 +99,7 @@ object BlobManager:
     ): ZLayer[Any, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+            KeyValueStorage.FileSystemKeyValueStorage(baseTmpPath, levels, requireExistingPath)
             .map(KeyValueBlobManager(_, baseTmpPath))
         )
 

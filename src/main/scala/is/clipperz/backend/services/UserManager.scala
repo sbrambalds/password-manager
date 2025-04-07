@@ -80,9 +80,9 @@ trait UserManager:
     def deleteUser(c: HexString): Task[Unit]
 
 object UserManager:
-    case class KeyValueUserManager(keyBlobArchive: KeyValueStorage) extends UserManager:
+    case class KeyValueUserManager(keyBlobStorage: KeyValueStorage) extends UserManager:
         override def getUser(username: HexString): Task[Option[RemoteUserCard]] =
-            keyBlobArchive
+            keyBlobStorage
             .getBlob(username.toString).map(_._1)
             .flatMap(fromStream[RemoteUserCard](_).map(Some.apply))
             .catchSome:
@@ -93,7 +93,7 @@ object UserManager:
             def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
                 Charset.Standard.utf8.encodeString(userCard.toJson)
                 .flatMap(blobChunks =>
-                    keyBlobArchive
+                    keyBlobStorage
                     .saveBlob(
                         userCard.c.toString,
                         ZStream.fromChunks(blobChunks),
@@ -113,7 +113,7 @@ object UserManager:
             .getUser(c)
             .flatMap(optional =>
                 if optional.isDefined
-                then keyBlobArchive.deleteBlob(c.toString)
+                then keyBlobStorage.deleteBlob(c.toString)
                 else ZIO.fail(new ResourceNotFoundException("User does not exist"))
             )
 

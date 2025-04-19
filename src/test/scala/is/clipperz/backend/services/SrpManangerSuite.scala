@@ -13,7 +13,7 @@ import is.clipperz.backend.data.HexString
 import is.clipperz.backend.data.HexString.{ bigIntToHex, bytesToHex }
 import is.clipperz.backend.functions.Conversions.{ bytesToBigInt, bigIntToBytes }
 import is.clipperz.backend.functions.crypto.HashFunction
-import is.clipperz.backend.services.UserArchive
+import is.clipperz.backend.services.UserManager
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
 import is.clipperz.backend.services.SrpManager
@@ -34,8 +34,8 @@ object SrpManangerSpec extends ZIOSpecDefault:
   val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
   val userBasePath = FileSystem.default.getPath("target", "tests", "archive", "users")
 
-  val keyBlobArchiveFolderDepth = 16
-  val archive = UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false)
+  val keyValueStorageFolderDepth = 16
+  val archive = UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, false)
 
   val layers =
     archive ++
@@ -82,7 +82,7 @@ object SrpManangerSpec extends ZIOSpecDefault:
               )
             )
 
-            userAchive <- ZIO.service[UserArchive]
+            userAchive <- ZIO.service[UserManager]
             username <- userAchive.saveUser(card, true)
 
             session <- ZIO.service[SessionManager]
@@ -161,7 +161,7 @@ object SrpManangerSpec extends ZIOSpecDefault:
               )
             )
 
-            userAchive <- ZIO.service[UserArchive]
+            userAchive <- ZIO.service[UserManager]
             username <- userAchive.saveUser(card, true)
 
             session <- ZIO.service[SessionManager]

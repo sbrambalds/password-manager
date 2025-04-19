@@ -1,11 +1,9 @@
-package is.clipperz.backend.services
+package is.clipperz.backend.functions
 
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.middleware.scheduledFileSystemMetricsCollection
 
 import java.io.{ FileNotFoundException, FileOutputStream }
-// import java.io.{ File, FileNotFoundException }
-// import java.nio.file.{ Files, Path }
 import zio.nio.file.{ Files, Path }
 
 import zio.{ Duration, Task, ZIO }
@@ -19,25 +17,23 @@ import zio.nio.file.Files.Attributes
 
 type Key = String
 
-trait KeyBlobArchive:
+trait KeyValueStorage:
     def saveBlob             (key: Key, content:  ZStream[Any, Throwable, Byte]): Task[Unit]
     def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit]
-    def saveBlobWithMetadata_fromPath (key: Key, content:  Path, metadata: ZStream[Any, Throwable, Byte]): Task[Unit]
     def getBlob              (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)]
     def getMetadata          (key: Key): Task[ZStream[Any, Throwable, Byte]]
     def deleteBlob           (key: Key): Task[Unit]
 
-object KeyBlobArchive:
+object KeyValueStorage:
     val WAIT_TIME = 10000
 
     enum ContentType(val value: String):
         case Blob       extends ContentType("blob")
         case Metadata   extends ContentType("metadata")
 
-    // def pathForContentType (path: Path, contentType: ContentType): Path = path.resolveSibling(Path(path.filename.toFile.getName().nn + "." + contentType.value))
     def pathForContentType (filename: Key, path: Path, contentType: ContentType): Path = path / s"${filename}.${contentType.value}"
 
-    class FileSystemKeyBlobArchive private (basePath: Path, levels: Int) extends KeyBlobArchive:
+    class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
         private def getContent (key: Key, contentType: ContentType): Task[(ZStream[Any, Throwable, Byte], Long)] =
             getBlobPath(key, false)
@@ -45,12 +41,10 @@ object KeyBlobArchive:
             .flatMap(path =>
                 Files.exists(path)
                 .flatMap(exists => exists match {
-                    // case true   => ZStream.fromPath(path)
                     case true   => (Files.readAllBytes(path).map(ZStream.fromChunk)).zip(Files.size(path))
                     case false  => ZIO.fail(new ResourceNotFoundException("Referenced blob does not exists"))
                 })
             )
-            // .getOrElse(ZIO.fail(new ResourceNotFoundException("Blob metadata not found")))
 
         override def getBlob (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] = getContent(key, ContentType.Blob)
 
@@ -62,7 +56,6 @@ object KeyBlobArchive:
             .mapError(_ => new NonWritableArchiveException("Could not create blob file"))
             .flatMap(path => content
                 .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
-                // .run(ZSink.fromPath(path))
                 .run(ZSink.fromOutputStream(new FileOutputStream(path.toFile)))
                 .map(_ => ())
             )
@@ -82,9 +75,6 @@ object KeyBlobArchive:
         override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] =
             saveBlob(key, content) <&> saveMetadata(key, metadata)
 
-        override def saveBlobWithMetadata_fromPath (key: Key, content:  Path, metadata: ZStream[Any, Throwable, Byte]): Task[Unit] =
-            moveFile(key, content) <&> saveMetadata(key, metadata)
-
         override def deleteBlob (key: Key): Task[Unit] =
             getBlobPath(key, false)
                 .flatMap(path =>
@@ -97,18 +87,15 @@ object KeyBlobArchive:
 
         private def computeBlobPath (key: Key): Path =
             val piecesLength: Int = key.length / levels
-            // val pieces: IndexedSeq[String | Null] =
             val pieces: IndexedSeq[String] =
                 for (i <- 0 to levels - 1)
                 yield key.substring(i * piecesLength, i * piecesLength + piecesLength).nn
-            // val subPathString: String = pieces.mkString("/")
             basePath / pieces.mkString("/")
 
         private def getBlobPath (key: Key, createFolders: Boolean): Task[Path] =
             val path: Path = computeBlobPath(key)
             Files.exists(path)
             .zip(Files.isDirectory(path))
-            // .tap((exists, isDirectory) => ZIO.log(s"GET BLOB PATH: ${key} => ${exists} - ${isDirectory} - ${createFolders}"))
             .flatMap((exists, isDirectory) => (exists, isDirectory, createFolders) match {
                 case (true,  true,  _    ) => ZIO.succeed(path)
                 case (true,  false, _    ) => ZIO.fail(new ResourceNotFoundException(s"Referenced blob does not exists"))
@@ -116,41 +103,22 @@ object KeyBlobArchive:
                 case (false, _,     true ) => Files.createDirectories(path) *> ZIO.succeed(path)
             })
 
-    object FileSystemKeyBlobArchive:
+    object FileSystemKeyValueStorage:
         def apply (
             basePath: Path,
             levels: Int,
             requireExistingPath: Boolean = true,
-        ): Task[FileSystemKeyBlobArchive] =
-            // if (Files.exists(basePath) && Files.isDirectory(basePath)) || !requireExistingPath
-            // then
-            //     scheduledFileSystemMetricsCollection(basePath).forkDaemon
-            //     *>
-            //     ZIO.succeed(new FileSystemKeyBlobArchive(basePath, levels))
-            // else
-            //     ZIO.fail(new IllegalArgumentException("Base path does not exist"))
-
+        ): Task[FileSystemKeyValueStorage] =
             Files.exists(basePath)
             .zip(Files.isDirectory(basePath))
             .flatMap((exists, isDirectory) => {
-                // println(s"===> FileSystemKeyBlogArchive: path: ${basePath}, exists: ${exists}, ${isDirectory}, requireExistingPath: ${requireExistingPath} => ${((exists && isDirectory) || !requireExistingPath)}")
                 ((exists, isDirectory, requireExistingPath) match {
-                     case (true,  true,  _    )  => ZIO.succeed(())
-                     case (true,  false, false)  => Files.deleteRecursive(basePath) *> Files.createDirectories(basePath) *> ZIO.succeed(())
-                     case (false, _,     false)  => Files.createDirectories(basePath) *> ZIO.succeed(())
-                     case (true,  false, true )  => ZIO.fail(new Exception(s"base folder file already exists, but is not a folder: ${basePath}"))
-                     case (false, _,     true )  => ZIO.fail(new Exception(s"base folder does not exists: ${basePath}"))
+                        case (true,  true,  _    )  => ZIO.succeed(())
+                        case (true,  false, false)  => Files.deleteRecursive(basePath) *> Files.createDirectories(basePath) *> ZIO.succeed(())
+                        case (false, _,     false)  => Files.createDirectories(basePath) *> ZIO.succeed(())
+                        case (true,  false, true )  => ZIO.fail(new Exception(s"base folder file already exists, but is not a folder: ${basePath}"))
+                        case (false, _,     true )  => ZIO.fail(new Exception(s"base folder does not exists: ${basePath}"))
                 })
                 *>  scheduledFileSystemMetricsCollection(basePath).forkDaemon
-                *>  ZIO.succeed(new FileSystemKeyBlobArchive(basePath, levels))
-
-                // println(s"===> FileSystemKeyBlogArchive: path: ${basePath}, exists: ${exists}, ${isDirectory}, requireExistingPath: ${requireExistingPath} => ${((exists && isDirectory) || !requireExistingPath)}")
-                // if ((exists && isDirectory) || !requireExistingPath)
-                // then
-                //     scheduledFileSystemMetricsCollection(basePath).forkDaemon
-                //     *>
-                //     ZIO.succeed(new FileSystemKeyBlobArchive(basePath, levels))
-                // else
-                //     ZIO.fail(new IllegalArgumentException("Base path does not exist"))
-            // .tap(result => ZIO.log(s"===> FileSystemKeyBlogArchive - result: ${result}"))
+                *>  ZIO.succeed(new FileSystemKeyValueStorage(basePath, levels))
             })

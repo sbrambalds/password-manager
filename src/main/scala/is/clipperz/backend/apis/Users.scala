@@ -6,7 +6,7 @@ import is.clipperz.backend.functions.{ fromStream }
 import is.clipperz.backend.Main.ClipperzHttpApp
 import is.clipperz.backend.middleware.authorizedMiddleware
 import is.clipperz.backend.LogAspect
-import is.clipperz.backend.services.{BlobArchive, RequestUserCard, SessionManager, SignupData, UserArchive, UserCard, remoteFromRequest}
+import is.clipperz.backend.services.{BlobManager, RequestUserCard, SessionManager, SignupData, UserManager, UserCard, remoteFromRequest}
 
 import zio.{ ZIO, Cause }
 import zio.http.{ Method, Response, Request, Routes, Status, handler, string }
@@ -14,15 +14,15 @@ import zio.json.EncoderOps
 import zio.stream.ZStream
 import is.clipperz.backend.services.CardsSignupData
 
-val usersApi: Routes[BlobArchive & UserArchive & SessionManager, Throwable] = Routes(
+val usersApi: Routes[BlobManager & UserManager & SessionManager, Throwable] = Routes(
     Method.POST / "api" / "users" / string("c") -> (handler: (c: String, request: Request) =>
         ZIO
-        .service[UserArchive]
-        .zip(ZIO.service[BlobArchive])
+        .service[UserManager]
+        .zip(ZIO.service[BlobManager])
         .zip(ZIO.service[SessionManager])
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((userArchive, blobArchive, sessionManager, content) =>
-        userArchive
+        .flatMap((userManager, blobManager, sessionManager, content) =>
+        userManager
             .getUser(HexString(c))
             .flatMap(optionalUser =>
             optionalUser match
@@ -34,11 +34,11 @@ val usersApi: Routes[BlobArchive & UserArchive & SessionManager, Throwable] = Ro
                 .flatMap { signupData =>
                 if HexString(c) == signupData.user.c then
                     // Returns an effect that executes both this effect and the specified effect, in parallel, combining their results into a tuple. If either side fails, then the other side will be interrupted.
-                    (   userArchive.saveUser(remoteFromRequest(signupData.user), false)
-                    <&> blobArchive.saveBlob(signupData.indexCardReference, signupData.indexCardIdentifier, ZStream.fromIterable(signupData.indexCardContent.toByteArray))
-                    <&> blobArchive.saveBlob(signupData.userInfoReference,  signupData.userInfoIdentifier,  ZStream.fromIterable(signupData.userInfoContent.toByteArray))
+                    (   userManager.saveUser(remoteFromRequest(signupData.user), false)
+                    <&> blobManager.saveBlob(signupData.indexCardReference, signupData.indexCardIdentifier, ZStream.fromIterable(signupData.indexCardContent.toByteArray))
+                    <&> blobManager.saveBlob(signupData.userInfoReference,  signupData.userInfoIdentifier,  ZStream.fromIterable(signupData.userInfoContent.toByteArray))
                     <&> ZIO.foreach(signupData.cards) {
-                            cardsSignupData => blobArchive.saveBlob(cardsSignupData.cardReference, cardsSignupData.cardIdentifier, ZStream.fromIterable(cardsSignupData.cardContent.toByteArray))
+                            cardsSignupData => blobManager.saveBlob(cardsSignupData.cardReference, cardsSignupData.cardIdentifier, ZStream.fromIterable(cardsSignupData.cardContent.toByteArray))
                         }
                     )
                     .parallelErrors
@@ -56,12 +56,12 @@ val usersApi: Routes[BlobArchive & UserArchive & SessionManager, Throwable] = Ro
 Routes( 
     Method.PUT / "api"  / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
-        .service[UserArchive]
-        .zip(ZIO.service[BlobArchive])
+        .service[UserManager]
+        .zip(ZIO.service[BlobManager])
         .zip(ZIO.service[SessionManager])
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((userArchive, blobArchive, sessionManager, content) =>
-            userArchive
+        .flatMap((userManager, blobManager, sessionManager, content) =>
+            userManager
             .getUser(HexString(c))
             .flatMap(optionalUser =>
             optionalUser match
@@ -71,7 +71,7 @@ Routes(
             .flatMap(currentUser =>
             fromStream[RequestUserCard](content)
                 .flatMap { userCard =>
-                    userArchive
+                    userManager
                         .getUser(HexString(userCard.c.toString))
                         .flatMap(optionalUser =>
                         optionalUser match
@@ -81,11 +81,11 @@ Routes(
                     *>
                     (if userCard.originMasterKey.contains(currentUser.masterKey(0)) 
                     then
-                        (userArchive.saveUser(remoteFromRequest(userCard), true))
+                        (userManager.saveUser(remoteFromRequest(userCard), true))
                         <&>
                         (sessionManager.updateSession(request, userCard.c.toString()))
                         <&>
-                        (userArchive.deleteUser(HexString(c)))
+                        (userManager.deleteUser(HexString(c)))
                     else
                         ZIO.fail(new BadRequestException("origin does not match"))
                     )
@@ -96,11 +96,11 @@ Routes(
 ,  
     Method.PATCH / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
-        .service[UserArchive]
-        .zip(ZIO.service[BlobArchive])
+        .service[UserManager]
+        .zip(ZIO.service[BlobManager])
         .zip(ZIO.succeed(request.body.asStream))
-        .flatMap((userArchive, blobArchive, content) =>
-            userArchive
+        .flatMap((userManager, blobManager, content) =>
+            userManager
             .getUser(HexString(c))
             .flatMap(optionalUser =>
             optionalUser match
@@ -111,7 +111,7 @@ Routes(
                 fromStream[UserCard](content)
                     .flatMap { userCard =>
                     if userCard.originMasterKey == currentUser.masterKey(0) then
-                        userArchive.saveUser(currentUser.copy(masterKey = userCard.masterKey), true)
+                        userManager.saveUser(currentUser.copy(masterKey = userCard.masterKey), true)
                     else
                         ZIO.fail(new BadRequestException("origin does not match"))
                     }
@@ -121,8 +121,8 @@ Routes(
 ,
     Method.GET / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         (for {
-            userArchive  <- ZIO.service[UserArchive]
-            optionalUser <- userArchive.getUser(HexString(c))
+            userManager  <- ZIO.service[UserManager]
+            optionalUser <- userManager.getUser(HexString(c))
         } yield (optionalUser match
             case None       => Response(status = Status.NotFound)
             case Some(card) => Response.json(card.masterKey.toJson)
@@ -130,9 +130,9 @@ Routes(
 ,
     Method.DELETE / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         (for {
-            userArchive    <- ZIO.service[UserArchive]
+            userManager    <- ZIO.service[UserManager]
             sessionManager <- ZIO.service[SessionManager]
-            _              <- userArchive.deleteUser(HexString(c))
+            _              <- userManager.deleteUser(HexString(c))
             _              <- sessionManager.deleteSession(request)
         } yield Response.text(c)) @@ LogAspect.logAnnotateRequestData(request)
 ) @@ authorizedMiddleware(req => ZIO.attempt(req.path.segments.last))

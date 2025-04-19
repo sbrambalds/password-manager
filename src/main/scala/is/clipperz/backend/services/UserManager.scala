@@ -2,6 +2,7 @@ package is.clipperz.backend.services
 
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.functions.fromStream
+import is.clipperz.backend.functions.KeyValueStorage
 import is.clipperz.backend.Exceptions.{ BadRequestException, ResourceConflictException, ResourceNotFoundException }
 
 import zio.nio.file.Path
@@ -73,15 +74,15 @@ object UserCard:
 
 // ============================================================================
 
-trait UserArchive:
+trait UserManager:
     def getUser(username: HexString): Task[Option[RemoteUserCard]]
     def saveUser(user: RemoteUserCard, overwrite: Boolean): Task[HexString]
     def deleteUser(c: HexString): Task[Unit]
 
-object UserArchive:
-    case class FileSystemUserArchive(keyBlobArchive: KeyBlobArchive) extends UserArchive:
+object UserManager:
+    case class KeyValueUserManager(keyBlobStorage: KeyValueStorage) extends UserManager:
         override def getUser(username: HexString): Task[Option[RemoteUserCard]] =
-            keyBlobArchive
+            keyBlobStorage
             .getBlob(username.toString).map(_._1)
             .flatMap(fromStream[RemoteUserCard](_).map(Some.apply))
             .catchSome:
@@ -92,10 +93,9 @@ object UserArchive:
             def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
                 Charset.Standard.utf8.encodeString(userCard.toJson)
                 .flatMap(blobChunks =>
-                    keyBlobArchive
+                    keyBlobStorage
                     .saveBlob(
                         userCard.c.toString,
-                        // ZStream.fromChunks(Chunk.fromArray(userCard.toJson.getBytes(StandardCharsets.UTF_8).nn)),
                         ZStream.fromChunks(blobChunks),
                     )
                     .map(_ => userCard.c)
@@ -113,16 +113,17 @@ object UserArchive:
             .getUser(c)
             .flatMap(optional =>
                 if optional.isDefined
-                then keyBlobArchive.deleteBlob(c.toString)
+                then keyBlobStorage.deleteBlob(c.toString)
                 else ZIO.fail(new ResourceNotFoundException("User does not exist"))
             )
 
-    def fs(
+    def fileSystem(
         basePath: Path,
         levels: Int,
         requireExistingPath: Boolean = true,
-    ): ZLayer[Any, Throwable, UserArchive] =
-        ZLayer.fromZIO[Any, Throwable, UserArchive](
-        KeyBlobArchive.FileSystemKeyBlobArchive(basePath, levels, requireExistingPath)
-            .map(new FileSystemUserArchive(_))
-    )
+    ): ZLayer[Any, Throwable, UserManager] =
+        ZLayer.scoped(
+            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
+        )
+
+    def sqlLite = ???

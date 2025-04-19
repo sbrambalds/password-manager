@@ -70,7 +70,7 @@ trait SrpManager:
 
 object SrpManager:
   case class SrpManagerV6a(
-      userArchive: UserArchive,
+      userManager: UserManager,
       prng: PRNG,
       srpFunctions: SrpFunctionsV6a,
     ) extends SrpManager:
@@ -78,7 +78,7 @@ object SrpManager:
     val configuration = srpFunctions.configuration
     val nn = configuration.group.nn
     override def srpStep1(step1Data: SRPStep1Data, session: Session): Task[(SRPStep1Response, Session)] =
-      userArchive
+      userManager
         .getUser(step1Data.c)
         .flatMap(optionalUser =>
           optionalUser match
@@ -102,7 +102,7 @@ object SrpManager:
       val bb = HexString(session("B").get)
       val b = HexString(session("b").get)
       val c = HexString(session("c").get)
-      val zioUser = userArchive.getUser(c).flatMap(u => ZIO.attempt(u.get))
+      val zioUser = userManager.getUser(c).flatMap(u => ZIO.attempt(u.get))
       val zioK: Task[Array[Byte]] = for {
         u : Array[Byte] <- srpFunctions.computeU(aa.toByteArray, bb.toByteArray)
         user: RemoteUserCard <- zioUser
@@ -130,11 +130,11 @@ object SrpManager:
         else ZIO.fail(new BadRequestException(s"M1 is not correct => M1 SERVER ${bytesToHex(m1)} != M1 CLIENT ${step2Data.m1}"))
       }
 
-  def v6a(): ZLayer[UserArchive & PRNG, Throwable, SrpManager] =
+  def v6a(): ZLayer[UserManager & PRNG, Throwable, SrpManager] =
     val srpFunctions = new SrpFunctionsV6a()
     ZLayer.scoped(
       for {
-        userArchive <- ZIO.service[UserArchive]
+        userManager <- ZIO.service[UserManager]
         prng <- ZIO.service[PRNG]
-      } yield SrpManagerV6a(userArchive, prng, srpFunctions)
+      } yield SrpManagerV6a(userManager, prng, srpFunctions)
     )

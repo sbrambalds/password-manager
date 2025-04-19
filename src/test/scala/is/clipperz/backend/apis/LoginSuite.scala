@@ -22,8 +22,8 @@ import is.clipperz.backend.functions.crypto.HashFunction
 // import is.clipperz.backend.functions.FileSystem
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
-import is.clipperz.backend.services.UserArchive
-import is.clipperz.backend.services.BlobArchive
+import is.clipperz.backend.services.UserManager
+import is.clipperz.backend.services.BlobManager
 import is.clipperz.backend.services.TollManager
 import is.clipperz.backend.services.SrpManager
 import is.clipperz.backend.functions.Conversions.{ bytesToBigInt, bigIntToBytes }
@@ -40,7 +40,7 @@ import is.clipperz.backend.services.SRPStep2Data
 import is.clipperz.backend.functions.SrpFunctions.SrpFunctionsV6a
 import is.clipperz.backend.functions.SrpFunctions
 import is.clipperz.backend.services.SRPStep2Response
-import is.clipperz.backend.services.OneTimeShareArchive
+import is.clipperz.backend.services.OneTimeShareManager
 import is.clipperz.backend.services.RequestUserCard
 import is.clipperz.backend.services.RemoteUserCard
 import is.clipperz.backend.functions.customErrorHandler
@@ -48,27 +48,27 @@ import is.clipperz.backend.services.SRPVersion
 import is.clipperz.backend.services.MasterKeyEncodingVersion
 import is.clipperz.backend.TestUtilities
 
-object LoginSpec extends ZIOSpec[UserArchive & BlobArchive]:
-    val keyBlobArchiveFolderDepth = 16
+object LoginSpec extends ZIOSpec[UserManager & BlobManager]:
+    val keyBlobManagerFolderDepth = 16
 
-    override def bootstrap: ZLayer[Any, Any, UserArchive & BlobArchive] =
-        UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++
-        BlobArchive.fs(blobBasePath, keyBlobArchiveFolderDepth, false)
+    override def bootstrap: ZLayer[Any, Any, UserManager & BlobManager] =
+        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
+        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false)
 
     val app =   loginApi
                 .handleErrorCauseZIO(customErrorHandler)
                 // .toHttpApp
-    val blobBasePath            = FileSystem.default.getPath("target", "tests", "archive", "blobs")
-    val userBasePath            = FileSystem.default.getPath("target", "tests", "archive", "users")
-    val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "archive", "one_time_share")
+    val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
+    val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
+    val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
 
     val environment =
         PRNG.live ++
         (PRNG.live >>> SessionManager.live()) ++
-        UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++
-        BlobArchive.fs(blobBasePath, keyBlobArchiveFolderDepth, false) ++
-        OneTimeShareArchive.fs(oneTimeShareBasePath, keyBlobArchiveFolderDepth, false) ++
-        ((UserArchive.fs(userBasePath, keyBlobArchiveFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
+        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
+        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
+        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
+        ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
         (PRNG.live >>> TollManager.live)
 
     val c = HexString("7815018e9d84b5b0f319c87dee46c8876e85806823500e03e72c5d66e5d40456")
@@ -88,15 +88,15 @@ object LoginSpec extends ZIOSpec[UserArchive & BlobArchive]:
 
     val identifier = HexString("abba")
 
-    val saveUser: ZIO[UserArchive & BlobArchive, Throwable, Unit] =
+    val saveUser: ZIO[UserManager & BlobManager, Throwable, Unit] =
         ZIO
-        .service[UserArchive]
-        .zip(ZIO.service[BlobArchive])
-        .flatMap((userArchive, blobArchive) =>
-            userArchive
+        .service[UserManager]
+        .zip(ZIO.service[BlobManager])
+        .flatMap((userManager, blobManager) =>
+            userManager
             .saveUser(testUser, false)
             .flatMap(_ =>
-                blobArchive
+                blobManager
                 .saveBlob(HexString(indexCardReference), identifier, ZStream.fromIterable(HexString(indexCardContent).toByteArray))
                 .map(_ => ())
             )

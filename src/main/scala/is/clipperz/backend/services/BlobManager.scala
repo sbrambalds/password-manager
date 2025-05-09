@@ -103,8 +103,12 @@ object BlobManager:
             .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
-    def sqlLite (tableName: String): ZLayer[Any, Throwable, BlobManager] = ???
-        // ZLayer.scoped(
-        //     KeyBlobArchive.SqlLiteKeyBlobArchive(tableName)
-        //     .map(KeyValueBlobArchive(_)
-        // )
+    def sqlLite (
+        tableName: String,
+        basePath: Path
+    ): ZLayer[Any, Throwable, BlobManager] = 
+        val baseTmpPath: Path = basePath / "tmp"
+        ZLayer.scoped(
+            KeyValueStorage.SqlLiteKeyValueStorage(tableName)
+            .map(KeyValueBlobManager(_, baseTmpPath))
+        )

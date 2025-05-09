@@ -20,6 +20,7 @@ import zio.http.Server.RequestStreaming
 import zio.http.Routes
 import java.io.File
 import zio.http.Path
+import com.augustnagro.magnum.magzio.* 
 
 object Main extends zio.ZIOAppDefault:
     override val bootstrap =
@@ -74,6 +75,16 @@ object Main extends zio.ZIOAppDefault:
                                     .leakDetection(LeakDetectionLevel.PARANOID)
                                     .maxThreads(nThreads)
 
+                                    import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+            
+        
+            val dataSourceConfig = new HikariConfig()
+            dataSourceConfig.setJdbcUrl("jdbc:sqlite:/path/to/your.db")  // You can also use ":memory:" for in-memory DB
+            dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
+            dataSourceConfig.setMaximumPoolSize(1) // Since SQLite is not great with concurrency
+        
+            val dataSource = new HikariDataSource(dataSourceConfig)
+
             // ( Files.createDirectories(blobBasePath) <&> 
             //   Files.createDirectories(userBasePath) <&> 
             //   Files.createDirectories(oneTimeShareBasePath)
@@ -96,7 +107,8 @@ object Main extends zio.ZIOAppDefault:
                     
                     ZLayer.succeed(config),
                     ZLayer.succeed(nettyConfig),
-                    Server.customized
+                    Server.customized,
+                    Transactor.layer(dataSource)
                 )
 
         else ZIO.logFatal("Not enough arguments")

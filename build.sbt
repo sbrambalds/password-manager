@@ -129,6 +129,10 @@ lazy val dependencies = Seq(
     "io.opentelemetry"         %  "opentelemetry-exporter-otlp" % "1.44.1",
     "io.opentelemetry.semconv" %  "opentelemetry-semconv"       % "1.28.0-alpha",
     "org.slf4j"                %  "slf4j-simple"                % "1.7.36",
+
+    "com.augustnagro" %% "magnumzio"  % "2.0.0-M1",
+    "org.xerial"      % "sqlite-jdbc" % "3.49.1.0",
+    "com.zaxxer"      % "HikariCP"    % "6.3.0",
   ),
   libraryDependencies ++= Seq(
     "dev.zio" %% "zio-test"     % zio_version,

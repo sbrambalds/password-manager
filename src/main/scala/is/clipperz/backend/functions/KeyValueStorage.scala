@@ -2,6 +2,7 @@ package is.clipperz.backend.functions
 
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.middleware.scheduledFileSystemMetricsCollection
+import is.clipperz.backend.sqlite.* 
 
 import java.io.{ FileNotFoundException, FileOutputStream }
 import zio.nio.file.{ Files, Path }
@@ -12,6 +13,14 @@ import zio.http.codec.HttpCodec.Metadata
 import zio.http.Header.ContentType
 import zio.nio.file.Files.Attribute
 import zio.nio.file.Files.Attributes
+
+import com.augustnagro.magnum.magzio.*
+import org.sqlite.SQLiteDataSource
+import javax.sql.DataSource
+import zio.Scope
+import java.sql.Blob
+import java.nio.charset.StandardCharsets
+import javax.sql.rowset.serial.SerialBlob
 
 // ============================================================================
 
@@ -33,7 +42,30 @@ object KeyValueStorage:
 
     def pathForContentType (filename: Key, path: Path, contentType: ContentType): Path = path / s"${filename}.${contentType.value}"
 
-    class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
+    case class SqlLiteKeyValueStorage private (tableName: String) extends KeyValueStorage :
+
+        private val blobRepo = BlobRepo()
+
+        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] = ???            
+
+        override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = 
+            ZIO.service[Transactor]
+                .flatMap(xa => {
+                    for {
+                        data <- content.runCollect.map(_.toArray)
+                        identifier <- metadata.runCollect.map(chunck => new String(chunck.toArray, StandardCharsets.UTF_8))
+                        _ <- xa.transact((tx: DbTx) => { blobRepo.insert(BlobDb(key, identifier, SerialBlob(data))) })
+                    } yield (())
+                })
+
+        override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] = ???
+
+        override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = ???
+
+        override def deleteBlob(key: Key): Task[Unit] = ???
+
+
+    case class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
         private def getContent (key: Key, contentType: ContentType): Task[(ZStream[Any, Throwable, Byte], Long)] =
             getBlobPath(key, false)
@@ -122,3 +154,8 @@ object KeyValueStorage:
                 *>  scheduledFileSystemMetricsCollection(basePath).forkDaemon
                 *>  ZIO.succeed(new FileSystemKeyValueStorage(basePath, levels))
             })
+    
+    object SqlLiteKeyValueStorage:
+        def apply (
+            tableName: String
+        ): Task[SqlLiteKeyValueStorage] = ???

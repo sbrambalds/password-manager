@@ -35,6 +35,7 @@ newtype ClassName = ClassName String
 derive instance newtypeCharacterSet :: Newtype ClassName _
 newtype Label = Label String
 newtype Enabled = Enabled Boolean
+derive instance newtypeEnabled :: Newtype Enabled _
 newtype Placeholder = Placeholder String
 newtype InputType = InputType String
 

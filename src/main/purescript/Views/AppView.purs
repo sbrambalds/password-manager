@@ -6,6 +6,7 @@ import Concur.React.DOM (a, div, h1, h3, header, li, text, ul)
 import Concur.React.Props as Props
 import Control.Alt ((<|>))
 import Control.Bind (bind)
+import Data.Eq ((==))
 import Data.Function (flip, (#), ($))
 import Data.Functor ((<$>))
 import Data.Maybe (Maybe(..))
@@ -23,7 +24,7 @@ import Functions.Donations (DonationLevel(..))
 import Functions.EnvironmentalVariables (currentCommit)
 import Test.Debug (debugState)
 import Views.CardsManagerView (CardManagerEvent, cardManagerInitialState, cardsManagerView)
-import Views.Components (footerComponent, proxyInfoComponent)
+import Views.Components (Enabled(..), footerComponent, proxyInfoComponent)
 import Views.DonationViews (DonationPageEvent, donationPage)
 import Views.LoginFormView (LoginPageEvent, loginPage)
 import Views.OverlayView (overlay)
@@ -53,7 +54,7 @@ appView widgetState@(WidgetState overlayInfo (Tuple page pagesState) proxyInfo) 
         signupFormView pagesState.signup
       ]
     , LoginPageEvent <$> headerPage proxyInfo page Login [
-        loginPage pagesState.login
+        loginPage (Enabled (page == Login)) pagesState.login
       ]
     , DonationPageEvent <$> headerPage proxyInfo page Donation [
         donationPage pagesState.donation

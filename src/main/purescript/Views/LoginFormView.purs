@@ -22,6 +22,7 @@ import Data.Eq ((/=), (==))
 import Data.Function ((#), ($))
 import Data.Functor ((<$>))
 import Data.HeytingAlgebra ((&&), not)
+import Data.Newtype (unwrap)
 import Data.Ord ((<))
 import Data.String (length)
 import DataModel.Credentials (Credentials, emptyCredentials)
@@ -29,6 +30,7 @@ import DataModel.WidgetState (LoginFormData, LoginType(..))
 import Effect.Class (liftEffect)
 import Functions.Communication.OneTimeShare (PIN)
 import Functions.Events (focus)
+import Views.Components (Enabled(..))
 
 type Username = String
 type Password = String
@@ -49,15 +51,15 @@ isFormValid :: Credentials -> Boolean
 isFormValid { username, password } = username /= "" && password /= ""
 
 
-loginPage :: LoginFormData -> Widget HTML LoginPageEvent
-loginPage formData@{credentials, pin, loginType} =
+loginPage :: Enabled -> LoginFormData -> Widget HTML LoginPageEvent
+loginPage enabled formData@{credentials, pin, loginType} =
   case loginType of
-    CredentialLogin -> credentialLoginWidget formData
+    CredentialLogin -> credentialLoginWidget enabled formData
     PinLogin        -> do
       form [Props.className "loginForm"] [
         div [Props.className "loginInputs"] [
           span [] [text "Enter your PIN"]
-        , pinLoginWidget (length pin < 5) formData
+        , pinLoginWidget (Enabled ((unwrap enabled) && (length pin < 5))) formData
         , GoToCredentialLoginEvent credentials.username <$ a [Props.onClick] [text "Login with passphrase"]
         ]
       ]
@@ -71,8 +73,8 @@ loginPage formData@{credentials, pin, loginType} =
         ]
       ]
 
-credentialLoginWidget :: LoginFormData -> Widget HTML LoginPageEvent
-credentialLoginWidget formData@{credentials: credentials@{username, password}} = do
+credentialLoginWidget :: Enabled -> LoginFormData -> Widget HTML LoginPageEvent
+credentialLoginWidget (Enabled enabled) formData@{credentials: credentials@{username, password}} = do
     form [Props.className "loginForm"] [
       div [Props.className "loginInputs"] [
         label [] [
@@ -83,8 +85,8 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
             , Props.placeholder "username"
             , Props.autoComplete "off", Props.autoCorrect "off", Props.autoCapitalize "off", Props.spellCheck false
             , Props.value username
-            , Props.autoFocus true
-            , Props.disabled false
+            , Props.autoFocus enabled
+            , Props.disabled (not enabled)
             , Props.onChange
             ]
           ] <#> (\username' -> UpdateForm formData {credentials = credentials {username = username'}})
@@ -96,7 +98,7 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
           , Props.placeholder "passphrase"
           , Props.value password
           , Props.autoComplete "off", Props.autoCorrect "off", Props.autoCapitalize "off", Props.spellCheck false
-          , Props.disabled false
+          , Props.disabled (not enabled)
           , Props.onChange
           ]
         ] <#> (\password' -> UpdateForm formData {credentials = credentials {password = password'}})
@@ -115,8 +117,8 @@ credentialLoginWidget formData@{credentials: credentials@{username, password}} =
     )
   ]
 
-pinLoginWidget :: Boolean -> LoginFormData -> Widget HTML LoginPageEvent
-pinLoginWidget active loginFormData@{pin} = do
+pinLoginWidget :: Enabled -> LoginFormData -> Widget HTML LoginPageEvent
+pinLoginWidget (Enabled enabled) loginFormData@{pin} = do
   pin' <- div [] [
     label [] [
       span [Props.className "label"] [text "Login"]
@@ -126,11 +128,11 @@ pinLoginWidget active loginFormData@{pin} = do
       , Props.placeholder "PIN"
       , Props.value pin
       , Props.autoComplete "off", Props.autoCorrect "off", Props.autoCapitalize "off", Props.spellCheck false
-      , Props.autoFocus active
-      , Props.disabled (not active)
+      , Props.autoFocus enabled
+      , Props.disabled (not enabled)
       , Props.onChange
       , Props.pattern "[0-9]{5}"
       ]
     ]
   ]
-  pure $ if (length pin' == 5) && active then LoginPinEvent pin' else UpdateForm loginFormData {pin = pin'}
+  pure $ if (length pin' == 5) && enabled then LoginPinEvent pin' else UpdateForm loginFormData {pin = pin'}

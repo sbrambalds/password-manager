@@ -109,14 +109,14 @@ const scrollElementIntoView = function(className) {
 
 const focus = function(id) {
 	return function() {
-		document.getElementById(id).focus();
+		document.getElementById(id)?.focus();
 		return;
 	}
 }
 
 const blur = function(id) {
 	return function() {
-		document.getElementById(id).blur();
+		document.getElementById(id)?.blur();
 		return;
 	}
 }

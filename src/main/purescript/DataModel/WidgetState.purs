@@ -27,6 +27,7 @@ import Views.SignupFormView (SignupDataForm)
 import Web.File.File (File)
 
 data Page = Loading | Login | Signup | Main | Donation 
+derive instance eqPage :: Eq Page
 type PagesState = {loading :: Maybe Page, login :: LoginFormData, signup :: SignupDataForm, main :: MainPageWidgetState, donation :: DonationLevel}
 
 _loadingPagesState :: Lens' PagesState (Maybe Page)

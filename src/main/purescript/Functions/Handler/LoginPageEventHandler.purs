@@ -95,7 +95,7 @@ handleLoginPageEvent (LoginPasskeyEvent) state@{srpConf, hash: hashFunc} proxyIn
               username <- getItem passkeyUsernameKey storage <#> note (InvalidStateError (CorruptedSavedPassphrase "salt not found in local storage")) # liftEffect # ExceptT
   
               getCredentialsWithPasskey =<< (getPRFKey hashFunc username (toArrayBuffer $ hex id))
-            ) # (message "Decrypt with PIN" # runStep)
+            ) # (message "Decrypt with Passkey" # runStep)
     prepareLoginResult <- (prepareLogin srpConf cred)         # (message "Prepare login"    # runStep)
     res                <-  loginSteps cred state fragmentState pagesInfo proxyInfo prepareLoginResult
     pure res

@@ -97,7 +97,7 @@ object Main extends zio.ZIOAppDefault:
                     ZLayer.succeed(config),
                     ZLayer.succeed(nettyConfig),
                     Server.customized
-                )
+                ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
 
         else ZIO.logFatal("Not enough arguments")
     }

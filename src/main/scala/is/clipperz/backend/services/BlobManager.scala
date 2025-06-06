@@ -99,8 +99,10 @@ object BlobManager:
     ): ZLayer[Any, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(baseTmpPath, levels, requireExistingPath)
-            .map(KeyValueBlobManager(_, baseTmpPath))
+            for {
+                _ <- Files.createDirectories(baseTmpPath)
+                keyValueStorage <- KeyValueStorage.FileSystemKeyValueStorage(baseTmpPath, levels, requireExistingPath)
+            } yield(KeyValueBlobManager(keyValueStorage, baseTmpPath))
         )
 
     def sqlLite (tableName: String): ZLayer[Any, Throwable, BlobManager] = ???

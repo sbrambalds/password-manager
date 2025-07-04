@@ -52,12 +52,22 @@ import is.clipperz.backend.services.RequestUserCard
 import is.clipperz.backend.services.CardsSignupData
 import is.clipperz.backend.services.MasterKeyEncodingVersion
 import is.clipperz.backend.services.SRPVersion
+import com.augustnagro.magnum.magzio.Transactor
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 
 object AppSpec extends ZIOSpecDefault:
     val app = Main.completeClipperzBackend
     val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
     val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
     val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
+
+    val dataSourceConfig = new HikariConfig()
+    dataSourceConfig.setJdbcUrl("jdbc:sqlite:/path/to/your.db")  // You can also use ":memory:" for in-memory DB
+    dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
+    dataSourceConfig.setMaximumPoolSize(1) // Since SQLite is not great with concurrency
+
+    val dataSource = new HikariDataSource(dataSourceConfig)
 
     val keyBlobManagerFolderDepth = 16
 
@@ -68,7 +78,8 @@ object AppSpec extends ZIOSpecDefault:
         BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
         OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
         ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
-        (PRNG.live >>> TollManager.live)
+        (PRNG.live >>> TollManager.live) ++
+        Transactor.layer(dataSource)
 
     val srpFunctions = new SrpFunctionsV6a()
 

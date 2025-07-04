@@ -7,6 +7,7 @@ import scala.collection.immutable.HashMap
 import is.clipperz.backend.services.Session
 import zio.nio.file.{ Files, Path }
 import zio.stream.ZSink
+import is.clipperz.backend.functions.KeyValueStorage.SqlLiteKeyValueStorage
 
 object TestUtilities:
     def deleteFilesInFolder (path: Path): ZIO[Any, Nothing, Boolean] =

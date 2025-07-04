@@ -5,6 +5,7 @@ import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
 import is.clipperz.backend.Exceptions.*
+import is.clipperz.backend.sqlite.*
 
 import java.io.{ FileNotFoundException, IOException, FileOutputStream }
 import zio.nio.file.{ Files, Path }
@@ -15,6 +16,9 @@ import zio.stream.{ ZStream, ZSink }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder }
 import zio.nio.charset.Charset
 import is.clipperz.backend.functions.KeyValueStorage
+import com.augustnagro.magnum.magzio.Transactor
+import com.augustnagro.magnum.Repo
+import is.clipperz.backend.functions.Key
 
 // ----------------------------------------------------------------------------
 
@@ -103,12 +107,13 @@ object BlobManager:
             .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
-    def sqlLite (
-        tableName: String,
-        basePath: Path
-    ): ZLayer[Any, Throwable, BlobManager] = 
+    def sqlLite[T <: DbTable] (
+        repo: Repo[T, T, Key],
+        basePath: Path,
+        factory: (Key, String, Array[Byte]) => T
+    ): ZLayer[Transactor, Throwable, BlobManager] = 
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            KeyValueStorage.SqlLiteKeyValueStorage(tableName)
+            KeyValueStorage.SqlLiteKeyValueStorage[T](repo, factory)
             .map(KeyValueBlobManager(_, baseTmpPath))
         )

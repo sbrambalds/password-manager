@@ -13,6 +13,7 @@ import zio.http.codec.HttpCodec.Metadata
 import zio.http.Header.ContentType
 import zio.nio.file.Files.Attribute
 import zio.nio.file.Files.Attributes
+import zio.Console.*
 
 import com.augustnagro.magnum.magzio.*
 import org.sqlite.SQLiteDataSource
@@ -21,17 +22,22 @@ import zio.Scope
 import java.sql.Blob
 import java.nio.charset.StandardCharsets
 import javax.sql.rowset.serial.SerialBlob
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
+import zio.Unsafe
+import java.io.IOException
+import zio.Chunk
 
 // ============================================================================
 
 type Key = String
 
 trait KeyValueStorage:
-    def saveBlob             (key: Key, content:  ZStream[Any, Throwable, Byte]): Task[Unit]
     def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit]
     def getBlob              (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)]
     def getMetadata          (key: Key): Task[ZStream[Any, Throwable, Byte]]
     def deleteBlob           (key: Key): Task[Unit]
+    def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit]
 
 object KeyValueStorage:
     val WAIT_TIME = 10000
@@ -42,28 +48,56 @@ object KeyValueStorage:
 
     def pathForContentType (filename: Key, path: Path, contentType: ContentType): Path = path / s"${filename}.${contentType.value}"
 
-    case class SqlLiteKeyValueStorage private (tableName: String) extends KeyValueStorage :
-
-        private val blobRepo = BlobRepo()
-
-        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] = ???            
+    case class SqlLiteKeyValueStorage[T <: DbTable] private (repo: Repo[T, T, Key], transactor: Transactor, factory: (Key, String, Array[Byte]) => T) extends KeyValueStorage : 
+        
+        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] = 
+            for {
+                data    <- content.runCollect.map(_.toArray)
+                _       <- transactor.transact((tx: DbTx) => { repo.insert(factory(key, "", data)) })
+                                .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
+            } yield (())
 
         override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = 
-            ZIO.service[Transactor]
-                .flatMap(xa => {
-                    for {
-                        data <- content.runCollect.map(_.toArray)
-                        identifier <- metadata.runCollect.map(chunck => new String(chunck.toArray, StandardCharsets.UTF_8))
-                        _ <- xa.transact((tx: DbTx) => { blobRepo.insert(BlobDb(key, identifier, SerialBlob(data))) })
-                    } yield (())
-                })
+            for {
+                identifier  <- metadata.runCollect
+                                    .map(chunck => new String(chunck.toArray, StandardCharsets.UTF_8))
+                                    .mapError(_ => new NonWritableArchiveException("Could not create blob file"))
+                data        <- content.runCollect.map(_.toArray)
+                insertRes   <- transactor.transact:
+                                    repo.insert(factory(key, identifier, data))
+                                .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
+            } yield (())
+                
 
-        override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] = ???
+        override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] =
+            transactor.transact:
+                repo.findById(key) match
+                    case Some(dbTable)   => (ZStream.fromIterable(dbTable.blob), dbTable.blob.length)
+                    case _              => throw new ResourceNotFoundException("Referenced document does not exist")
+            
+        override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = 
+            transactor.transact: 
+                repo.findById(key) match 
+                    case Some(dbTable)   => ZStream.fromIterable(dbTable.content.getBytes())
+                    case _              => throw new ResourceNotFoundException("Referenced document does not exist")
 
-        override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = ???
 
-        override def deleteBlob(key: Key): Task[Unit] = ???
+        override def deleteBlob(key: Key): Task[Unit] = 
+            transactor.transact:
+                repo.deleteById(key)
+            .mapError(_ => new ResourceNotFoundException("Referenced document does not exist"))
 
+        def dropTable(): Task[Unit] = 
+            transactor.transact:
+                sql"drop table if exists UserDb;".update.run()
+                sql"drop table if exists OneTimeShareDb;".update.run()
+                sql"drop table if exists BlobDb;".update.run()
+
+        def createTable(): Task[Unit] =
+            transactor.transact:
+                sql"create table UserDb (hash text primary key, content text, blob blob);".update.run()
+                sql"create table OneTimeShareDb (hash text primary key, content text, blob blob);".update.run()
+                sql"create table BlobDb (hash text primary key, content text, blob blob);".update.run()
 
     case class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
@@ -101,8 +135,9 @@ object KeyValueStorage:
             .map(path => pathForContentType(key, path, ContentType.Blob))
             .flatMap(path => Files.move(content, path))
 
-        private  def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte]): Task[Unit]   = saveData(key, ContentType.Metadata, metadata)
-        override def saveBlob     (key: Key, content:  ZStream[Any, Throwable, Byte]): Task[Unit]   = saveData(key, ContentType.Blob,     content)
+        private def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = saveData(key, ContentType.Metadata, metadata)
+
+        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte]): Task[Unit] = saveData(key, ContentType.Blob,     content)
 
         override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] =
             saveBlob(key, content) <&> saveMetadata(key, metadata)
@@ -156,6 +191,6 @@ object KeyValueStorage:
             })
     
     object SqlLiteKeyValueStorage:
-        def apply (
-            tableName: String
-        ): Task[SqlLiteKeyValueStorage] = ???
+        def apply[T <: DbTable](repo: Repo[T, T, Key], factory: (Key, String, Array[Byte]) => T): ZIO[Transactor, Throwable, SqlLiteKeyValueStorage[T]] = 
+            ZIO.service[Transactor]
+                .map(tx => new SqlLiteKeyValueStorage[T](repo, tx, factory))

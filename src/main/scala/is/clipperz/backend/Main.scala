@@ -10,6 +10,9 @@ import zio.nio.file.{ Files, FileSystem }
 
 import scala.util.Try
 
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
+
 import zio.{ LogLevel, Runtime, Scope, ZIOAppArgs, ZIO, ZLayer, durationInt }
 import zio.logging.LogFormat
 import zio.metrics.connectors.{ MetricsConfig, datadog }
@@ -28,7 +31,7 @@ object Main extends zio.ZIOAppDefault:
         Runtime.removeDefaultLoggers ++ Runtime.addLogger(CustomLogger.basicColoredLogger(LogLevel.Info)) // >>> SLF4J.slf4j(logFormat)
 
     type ClipperzEnvironment =
-        PRNG & SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager
+        PRNG & SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager & Transactor
 
     type ClipperzHttpApp = Routes[
         ClipperzEnvironment
@@ -74,10 +77,7 @@ object Main extends zio.ZIOAppDefault:
             val nettyConfig   = NettyConfig.default
                                     .leakDetection(LeakDetectionLevel.PARANOID)
                                     .maxThreads(nThreads)
-
-                                    import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
             
-        
             val dataSourceConfig = new HikariConfig()
             dataSourceConfig.setJdbcUrl("jdbc:sqlite:/path/to/your.db")  // You can also use ":memory:" for in-memory DB
             dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
@@ -104,11 +104,11 @@ object Main extends zio.ZIOAppDefault:
                     BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
                     OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
                     SrpManager.v6a(),
-                    
+                    Transactor.layer(dataSource),
+
                     ZLayer.succeed(config),
                     ZLayer.succeed(nettyConfig),
-                    Server.customized,
-                    Transactor.layer(dataSource)
+                    Server.customized
                 )
 
         else ZIO.logFatal("Not enough arguments")

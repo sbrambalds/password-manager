@@ -50,12 +50,15 @@ object KeyValueStorage:
 
     case class SqlLiteKeyValueStorage[T <: DbTable] private (repo: Repo[T, T, Key], transactor: Transactor, factory: (Key, String, Array[Byte]) => T) extends KeyValueStorage : 
         
-        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] = 
+        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] =
+        (
             for {
-                data    <- content.runCollect.map(_.toArray)
-                _       <- transactor.transact((tx: DbTx) => { repo.insert(factory(key, "", data)) })
-                                .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
-            } yield (())
+            data <- content.runCollect.map(_.toArray)
+            _    <- transactor.transact {
+                        repo.insert(factory(key, "", data))
+                    }
+            } yield ()
+        ).timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
 
         override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = 
             for {
@@ -67,7 +70,6 @@ object KeyValueStorage:
                                     repo.insert(factory(key, identifier, data))
                                 .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
             } yield (())
-                
 
         override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] =
             transactor.transact:
@@ -86,18 +88,6 @@ object KeyValueStorage:
             transactor.transact:
                 repo.deleteById(key)
             .mapError(_ => new ResourceNotFoundException("Referenced document does not exist"))
-
-        def dropTable(): Task[Unit] = 
-            transactor.transact:
-                sql"drop table if exists UserDb;".update.run()
-                sql"drop table if exists OneTimeShareDb;".update.run()
-                sql"drop table if exists BlobDb;".update.run()
-
-        def createTable(): Task[Unit] =
-            transactor.transact:
-                sql"create table UserDb (hash text primary key, content text, blob blob);".update.run()
-                sql"create table OneTimeShareDb (hash text primary key, content text, blob blob);".update.run()
-                sql"create table BlobDb (hash text primary key, content text, blob blob);".update.run()
 
     case class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
@@ -192,5 +182,7 @@ object KeyValueStorage:
     
     object SqlLiteKeyValueStorage:
         def apply[T <: DbTable](repo: Repo[T, T, Key], factory: (Key, String, Array[Byte]) => T): ZIO[Transactor, Throwable, SqlLiteKeyValueStorage[T]] = 
-            ZIO.service[Transactor]
-                .map(tx => new SqlLiteKeyValueStorage[T](repo, tx, factory))
+            for {
+                transactor <- ZIO.service[Transactor]
+                _ <- repo.createTable(transactor)
+            } yield(new SqlLiteKeyValueStorage[T](repo, transactor, factory))

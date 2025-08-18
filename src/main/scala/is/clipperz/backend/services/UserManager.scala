@@ -11,6 +11,13 @@ import zio.nio.charset.Charset
 import zio.{ ZIO, ZLayer, Tag, Task, Chunk }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder, EncoderOps }
 import zio.stream.{ ZSink, ZStream }
+import is.clipperz.backend.sqlite.Key
+import is.clipperz.backend.sqlite.DbTable
+import com.augustnagro.magnum.Repo
+import com.augustnagro.magnum.magzio.Transactor
+import is.clipperz.backend.sqlite.UserRepo
+import is.clipperz.backend.sqlite.UserDb
+import com.augustnagro.magnum.magzio.sql
 
 // ============================================================================
 
@@ -126,4 +133,11 @@ object UserManager:
             KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
         )
 
-    def sqlLite = ???
+    def sqlLite: ZLayer[Transactor, Throwable, UserManager] = 
+        ZLayer.scoped(
+            KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
+                .map(KeyValueUserManager(_))
+            // for {
+            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[UserDb]("UserDb", new UserRepo(), UserDb.apply)
+            // } yield(KeyValueUserManager(sqlLiteKeyValueStorage))
+        )

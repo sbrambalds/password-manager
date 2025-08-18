@@ -107,13 +107,14 @@ object BlobManager:
             .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
-    def sqlLite[T <: DbTable] (
-        repo: Repo[T, T, Key],
-        basePath: Path,
-        factory: (Key, String, Array[Byte]) => T
+    def sqlLite(
+        basePath: Path
     ): ZLayer[Transactor, Throwable, BlobManager] = 
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            KeyValueStorage.SqlLiteKeyValueStorage[T](repo, factory)
-            .map(KeyValueBlobManager(_, baseTmpPath))
+            KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
+                .map(KeyValueBlobManager(_, baseTmpPath))
+            // for {
+            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[BlobDb]("BlobDb", new BlobRepo(), BlobDb.apply)
+            // } yield(KeyValueBlobManager(sqlLiteKeyValueStorage, baseTmpPath))
         )

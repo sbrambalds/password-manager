@@ -19,6 +19,13 @@ import zio.{ Duration, ZIO, ZLayer, Task, Chunk }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder }
 import zio.stream.{ ZStream, ZSink }
 import is.clipperz.backend.apis.SecretVersion
+import com.augustnagro.magnum.magzio.Transactor
+import is.clipperz.backend.sqlite.Key
+import is.clipperz.backend.sqlite.DbTable
+import com.augustnagro.magnum.Repo
+// import is.clipperz.backend.sqlite.
+import is.clipperz.backend.sqlite.OneTimeShareDb
+import is.clipperz.backend.sqlite.OneTimeShareRepo
 
 // ----------------------------------------------------------------------------
 
@@ -71,7 +78,7 @@ object OneTimeShareManager:
 
   // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
-    def initializeOneTimeShareArchive(basePath: Path): Task[Unit] =
+    def initializeOneTimeShareManager(basePath: Path): Task[Unit] =
 
         ZIO.attempt:
             Files.exists(basePath)
@@ -95,4 +102,11 @@ object OneTimeShareManager:
             KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueOneTimeShareManager(_))
         )
 
-    def sqlLite = ???
+    def sqlLite: ZLayer[Transactor, Throwable, OneTimeShareManager] = 
+        ZLayer.scoped(
+            KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
+                .map(KeyValueOneTimeShareManager(_))
+            // for {
+            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb]("OneTimeShareDb", new OneTimeShareRepo(), OneTimeShareDb.apply)
+            // } yield(KeyValueOneTimeShareManager(sqlLiteKeyValueStorage))
+        )

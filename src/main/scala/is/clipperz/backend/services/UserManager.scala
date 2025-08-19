@@ -127,10 +127,11 @@ object UserManager:
             KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
         )
 
-    def sqlLite: ZLayer[Transactor, Throwable, UserManager] = 
+    def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, UserManager] = 
         ZLayer.scoped(
             KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
                 .map(KeyValueUserManager(_))
+                .provideLayer(transactor)
             // for {
             //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[UserDb]("UserDb", new UserRepo(), UserDb.apply)
             // } yield(KeyValueUserManager(sqlLiteKeyValueStorage))

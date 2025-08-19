@@ -30,10 +30,8 @@ object Main extends zio.ZIOAppDefault:
         val logFormat = LogFormat.colored |-| LogFormat.spans
         Runtime.removeDefaultLoggers ++ Runtime.addLogger(CustomLogger.basicColoredLogger(LogLevel.Info)) // >>> SLF4J.slf4j(logFormat)
 
-    type ClipperzBaseEnvironment =
+    type ClipperzEnvironment =
         PRNG & SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager
-
-    type ClipperzEnvironment = ClipperzBaseEnvironment | ClipperzBaseEnvironment & Transactor
 
     type ClipperzHttpApp = Routes[
         ClipperzEnvironment
@@ -120,6 +118,7 @@ object Main extends zio.ZIOAppDefault:
                     dataSourceConfig.setMaximumPoolSize(1) 
                 
                     val dataSource = new HikariDataSource(dataSourceConfig)
+                    val transactor = Transactor.layer(dataSource)
 
                     val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
 
@@ -144,11 +143,10 @@ object Main extends zio.ZIOAppDefault:
                             PRNG.live,
                             SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
                             TollManager.live,
-                            UserManager.sqlLite,
-                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs")),
-                            OneTimeShareManager.sqlLite,
+                            UserManager.sqlLite(transactor),
+                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
+                            OneTimeShareManager.sqlLite(transactor),
                             SrpManager.v6a(),
-                            Transactor.layer(dataSource),
 
                             ZLayer.succeed(config),
                             ZLayer.succeed(nettyConfig),

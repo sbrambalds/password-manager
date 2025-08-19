@@ -102,11 +102,9 @@ object OneTimeShareManager:
             KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueOneTimeShareManager(_))
         )
 
-    def sqlLite: ZLayer[Transactor, Throwable, OneTimeShareManager] = 
+    def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, OneTimeShareManager] = 
         ZLayer.scoped(
             KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
                 .map(KeyValueOneTimeShareManager(_))
-            // for {
-            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb]("OneTimeShareDb", new OneTimeShareRepo(), OneTimeShareDb.apply)
-            // } yield(KeyValueOneTimeShareManager(sqlLiteKeyValueStorage))
+                .provideLayer(transactor)
         )

@@ -52,6 +52,9 @@ import is.clipperz.backend.services.RequestUserCard
 import is.clipperz.backend.services.CardsSignupData
 import is.clipperz.backend.services.MasterKeyEncodingVersion
 import is.clipperz.backend.services.SRPVersion
+import com.augustnagro.magnum.magzio.Transactor
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 
 object AppSpec extends ZIOSpecDefault:
     val app = Main.completeClipperzBackend

@@ -17,33 +17,49 @@ import zio.Clock.ClockLive
 import zio.test.TestClock
 import zio.Duration
 import is.clipperz.backend.TestUtilities
+import is.clipperz.backend.sqlite.* 
 import zio.test.TestResult.{ allSuccesses }
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
+import com.augustnagro.magnum.magzio.Transactor
+import zio.Scope
+import zio.Exit
 
-object KeyValueStorageSpec extends ZIOSpecDefault:
-  val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
-  val keyValueStorage = KeyValueStorage.FileSystemKeyValueStorage(blobBasePath, 1, false)
+object SqlLiteStorageSpec extends ZIOSpecDefault:
 
+  val config = new HikariConfig()
+  config.setJdbcUrl("jdbc:sqlite:target/ClipperzDb.db")
+  config.setDriverClassName("org.sqlite.JDBC")
+  config.setMaximumPoolSize(5)
+  config.setConnectionTestQuery("SELECT 1")
+  
+  val dataSource = new HikariDataSource(config)
+
+  val keyValueStorage = KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
+    .provideLayer(Transactor.layer(dataSource))
+  
+  
   val testContent = ZStream.fromIterable("testContent".getBytes().nn)
+  val testMetadata =  ZStream.fromIterable("testMetadata".getBytes().nn)
   val failingContent = ZStream.never
   val testKey = "testKey"
   val failingKey = "failingKey"
 
-  def spec = suite("KeyValueStorage")(
+  def spec = suite("SqlLiteValueStorage")(
     test("getBlob - fail") {
       assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
     } +
     test("saveBlob - success") {
         for {
-          fiber <- keyValueStorage.flatMap(_.saveBlob(testKey, testContent).fork)
+          _ <- keyValueStorage.flatMap(_.saveBlobWithMetadata(testKey, testContent, testMetadata, false))
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
-          _ <- fiber.join
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
           result <- testContent.zip(content).map((a, b) => a == b).toIterator.map(_.map(_.getOrElse(false)).reduce(_ && _))
         } yield assertTrue(result)
-      } +
+    } +
     test("saveBlob with failing stream - success") {
         for {
-          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent).fork)
+          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
           res <- assertZIO(fiber.await)(fails(isSubtype[EmptyContentException](anything)))
         } yield res
@@ -67,7 +83,10 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
             _   <- keyValueStorage.flatMap(_.deleteBlob(testKey))
         } yield allSuccesses(res, assertCompletes)
     }
-  ) @@
-    TestAspect.sequential @@
-    TestAspect.beforeAll(TestUtilities.deleteFilesInFolder(blobBasePath)) @@
-    TestAspect.afterAll (TestUtilities.deleteFilesInFolder(blobBasePath))
+  ) @@ TestAspect.sequential @@
+    TestAspect.beforeAll({
+      for {
+        _ <- TestUtilities.dropTable()
+                          .provideLayer(Transactor.layer(dataSource))
+      } yield()
+    })

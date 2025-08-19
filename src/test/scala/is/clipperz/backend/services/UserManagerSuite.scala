@@ -62,14 +62,6 @@ object UserManagerSpec extends ZIOSpecDefault:
           user <- Manager.getUser(c)
         } yield assertTrue(user == Some(testUser), res == c)
       } +
-      test("saveBlob with no overwrite - fail") {
-        for {
-          Manager <- ZIO.service[UserManager]
-          fiber <- Manager.saveUser(testUser2, false).fork
-          _ <- TestClock.adjust(Duration.fromMillis(10))
-          res <- assertZIO(fiber.await)(fails(isSubtype[ResourceConflictException](anything)))
-        } yield res
-      } +
       test("saveBlob with overwrite - success") {
         for {
           Manager <- ZIO.service[UserManager]

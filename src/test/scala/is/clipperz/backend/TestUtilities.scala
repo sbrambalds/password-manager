@@ -7,6 +7,8 @@ import scala.collection.immutable.HashMap
 import is.clipperz.backend.services.Session
 import zio.nio.file.{ Files, Path }
 import zio.stream.ZSink
+import is.clipperz.backend.functions.KeyValueStorage.SqlLiteKeyValueStorage
+import com.augustnagro.magnum.magzio.*
 
 object TestUtilities:
     def deleteFilesInFolder (path: Path): ZIO[Any, Nothing, Boolean] =
@@ -26,4 +28,12 @@ object TestUtilities:
         prng
             .nextBytes(size)
             .catchAll(_ => ZIO.succeed(Array.emptyByteArray))
+        )
+
+    def dropTable(): ZIO[Transactor, Throwable, Unit] = 
+        ZIO.service[Transactor].map(
+            _.transact:
+                sql"drop table if exists UserDb;".update.run()
+                sql"drop table if exists OneTimeShareDb;".update.run()
+                sql"drop table if exists BlobDb;".update.run()
         )

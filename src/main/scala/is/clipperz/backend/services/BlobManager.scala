@@ -5,6 +5,7 @@ import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
 import is.clipperz.backend.Exceptions.*
+import is.clipperz.backend.sqlite.*
 
 import java.io.{ FileNotFoundException, IOException, FileOutputStream }
 import zio.nio.file.{ Files, Path }
@@ -15,6 +16,9 @@ import zio.stream.{ ZStream, ZSink }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder }
 import zio.nio.charset.Charset
 import is.clipperz.backend.functions.KeyValueStorage
+import com.augustnagro.magnum.magzio.Transactor
+import com.augustnagro.magnum.Repo
+import is.clipperz.backend.functions.Key
 
 // ----------------------------------------------------------------------------
 
@@ -55,7 +59,7 @@ object BlobManager:
                                 .map(ZStream.fromChunk)
                                 //  TODO: here the file is copied from `tmp` to the final destination; we may opt to just **move** it - Giulio Cesare 29/02/2024
                                 .flatMap(contentStream => keyValueStorage
-                                    .saveBlobWithMetadata(hash.toString, contentStream, identifierStream)
+                                    .saveBlobWithMetadata(hash.toString, contentStream, identifierStream, false)
                                     .map(_ => hash)
                                 )
                             )
@@ -92,6 +96,19 @@ object BlobManager:
 
   // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
+    def initializeBlobArchive (baseTmpPath: Path): Task[Unit] =
+        Files.exists(baseTmpPath)
+        .zip(Files.isDirectory(baseTmpPath))
+        .flatMap(checks => 
+            val result = checks match {
+                case (true, false)  => Files.delete(baseTmpPath) *> Files.createDirectories(baseTmpPath)
+                case (true, true)   => ZIO.succeed(())
+                case (false, _)     => Files.createDirectories(baseTmpPath)
+            }
+            result
+    )
+
+
     def fileSystem (
         basePath: Path,
         levels: Int,
@@ -99,14 +116,17 @@ object BlobManager:
     ): ZLayer[Any, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            for {
-                _ <- Files.createDirectories(baseTmpPath)
-                keyValueStorage <- KeyValueStorage.FileSystemKeyValueStorage(baseTmpPath, levels, requireExistingPath)
-            } yield(KeyValueBlobManager(keyValueStorage, baseTmpPath))
+            initializeBlobArchive(baseTmpPath) *>
+            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+            .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
-    def sqlLite (tableName: String): ZLayer[Any, Throwable, BlobManager] = ???
-        // ZLayer.scoped(
-        //     KeyBlobArchive.SqlLiteKeyBlobArchive(tableName)
-        //     .map(KeyValueBlobArchive(_)
-        // )
+    def sqlLite(
+        basePath: Path
+    ): ZLayer[Transactor, Throwable, BlobManager] = 
+        val baseTmpPath: Path = basePath / "tmp"
+        ZLayer.scoped(
+            initializeBlobArchive(baseTmpPath) *>
+            KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
+                .map(KeyValueBlobManager(_, baseTmpPath))
+        )

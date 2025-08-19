@@ -11,6 +11,13 @@ import zio.nio.charset.Charset
 import zio.{ ZIO, ZLayer, Tag, Task, Chunk }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder, EncoderOps }
 import zio.stream.{ ZSink, ZStream }
+import is.clipperz.backend.sqlite.Key
+import is.clipperz.backend.sqlite.DbTable
+import com.augustnagro.magnum.Repo
+import com.augustnagro.magnum.magzio.Transactor
+import is.clipperz.backend.sqlite.UserRepo
+import is.clipperz.backend.sqlite.UserDb
+import com.augustnagro.magnum.magzio.sql
 
 // ============================================================================
 
@@ -90,22 +97,16 @@ object UserManager:
                 case ex => ZIO.fail(ex)
 
         override def saveUser(userCard: RemoteUserCard, overwrite: Boolean): Task[HexString] =
-            def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
-                Charset.Standard.utf8.encodeString(userCard.toJson)
-                .flatMap(blobChunks =>
-                    keyBlobStorage
-                    .saveBlob(
-                        userCard.c.toString,
-                        ZStream.fromChunks(blobChunks),
-                    )
-                    .map(_ => userCard.c)
+            // def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
+            Charset.Standard.utf8.encodeString(userCard.toJson)
+            .flatMap(blobChunks =>
+                keyBlobStorage
+                .saveBlob(
+                    userCard.c.toString,
+                    ZStream.fromChunks(blobChunks),
+                    overwrite
                 )
-
-            this.getUser(userCard.c).flatMap(optional => if optional.isDefined
-                then (if (overwrite) 
-                        then saveUserCard(userCard)
-                        else ZIO.fail(new ResourceConflictException("User already present")))
-                else saveUserCard(userCard)
+                .map(_ => userCard.c)
             )
 
         override def deleteUser(c: HexString): Task[Unit] =
@@ -126,4 +127,11 @@ object UserManager:
             KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
         )
 
-    def sqlLite = ???
+    def sqlLite: ZLayer[Transactor, Throwable, UserManager] = 
+        ZLayer.scoped(
+            KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
+                .map(KeyValueUserManager(_))
+            // for {
+            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[UserDb]("UserDb", new UserRepo(), UserDb.apply)
+            // } yield(KeyValueUserManager(sqlLiteKeyValueStorage))
+        )

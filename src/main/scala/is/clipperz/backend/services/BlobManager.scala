@@ -59,7 +59,7 @@ object BlobManager:
                                 .map(ZStream.fromChunk)
                                 //  TODO: here the file is copied from `tmp` to the final destination; we may opt to just **move** it - Giulio Cesare 29/02/2024
                                 .flatMap(contentStream => keyValueStorage
-                                    .saveBlobWithMetadata(hash.toString, contentStream, identifierStream)
+                                    .saveBlobWithMetadata(hash.toString, contentStream, identifierStream, false)
                                     .map(_ => hash)
                                 )
                             )
@@ -96,6 +96,19 @@ object BlobManager:
 
   // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
+    def initializeBlobArchive (baseTmpPath: Path): Task[Unit] =
+        Files.exists(baseTmpPath)
+        .zip(Files.isDirectory(baseTmpPath))
+        .flatMap(checks => 
+            val result = checks match {
+                case (true, false)  => Files.delete(baseTmpPath) *> Files.createDirectories(baseTmpPath)
+                case (true, true)   => ZIO.succeed(())
+                case (false, _)     => Files.createDirectories(baseTmpPath)
+            }
+            result
+    )
+
+
     def fileSystem (
         basePath: Path,
         levels: Int,
@@ -103,7 +116,8 @@ object BlobManager:
     ): ZLayer[Any, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(baseTmpPath, levels, requireExistingPath)
+            initializeBlobArchive(baseTmpPath) *>
+            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
             .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
@@ -112,9 +126,7 @@ object BlobManager:
     ): ZLayer[Transactor, Throwable, BlobManager] = 
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
+            initializeBlobArchive(baseTmpPath) *>
             KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
                 .map(KeyValueBlobManager(_, baseTmpPath))
-            // for {
-            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[BlobDb]("BlobDb", new BlobRepo(), BlobDb.apply)
-            // } yield(KeyValueBlobManager(sqlLiteKeyValueStorage, baseTmpPath))
         )

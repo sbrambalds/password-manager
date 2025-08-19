@@ -28,13 +28,13 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
   val testKey = "testKey"
   val failingKey = "failingKey"
 
-  def spec = suite("KeyValueStorage")(
+  def spec = suite("FileSystemValueStorage")(
     test("getBlob - fail") {
       assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
     } +
     test("saveBlob - success") {
         for {
-          fiber <- keyValueStorage.flatMap(_.saveBlob(testKey, testContent).fork)
+          fiber <- keyValueStorage.flatMap(_.saveBlob(testKey, testContent, false).fork)
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
           _ <- fiber.join
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
@@ -43,7 +43,7 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
       } +
     test("saveBlob with failing stream - success") {
         for {
-          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent).fork)
+          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
           res <- assertZIO(fiber.await)(fails(isSubtype[EmptyContentException](anything)))
         } yield res

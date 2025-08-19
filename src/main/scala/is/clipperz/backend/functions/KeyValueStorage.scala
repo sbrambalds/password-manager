@@ -27,17 +27,18 @@ import com.zaxxer.hikari.HikariDataSource
 import zio.Unsafe
 import java.io.IOException
 import zio.Chunk
+import scala.collection.mutable.ArraySeq.ofBoolean
 
 // ============================================================================
 
 type Key = String
 
 trait KeyValueStorage:
-    def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit]
+    def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit]
     def getBlob              (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)]
     def getMetadata          (key: Key): Task[ZStream[Any, Throwable, Byte]]
     def deleteBlob           (key: Key): Task[Unit]
-    def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit]
+    def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit]
 
 object KeyValueStorage:
     val WAIT_TIME = 10000
@@ -50,26 +51,25 @@ object KeyValueStorage:
 
     case class SqlLiteKeyValueStorage[T <: DbTable] private (repo: Repo[T, T, Key], transactor: Transactor, factory: (Key, String, Array[Byte]) => T) extends KeyValueStorage : 
         
-        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte]): Task[Unit] =
-        (
-            for {
-            data <- content.runCollect.map(_.toArray)
-            _    <- transactor.transact {
-                        repo.insert(factory(key, "", data))
-                    }
-            } yield ()
-        ).timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
+        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] =
+            saveBlobWithMetadata(key, content, ZStream.empty, overwrite)
 
-        override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = 
-            for {
+        override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = 
+            (for {
                 identifier  <- metadata.runCollect
                                     .map(chunck => new String(chunck.toArray, StandardCharsets.UTF_8))
                                     .mapError(_ => new NonWritableArchiveException("Could not create blob file"))
                 data        <- content.runCollect.map(_.toArray)
-                insertRes   <- transactor.transact:
-                                    repo.insert(factory(key, identifier, data))
-                                .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
-            } yield (())
+                entity      =  factory(key, identifier, data)
+                insertRes   <- transactor.transact {
+                        overwrite match {
+                            case true  => repo.update(entity)
+                            case false => repo.insert(entity)
+                        }
+                        
+                    }    
+            } yield ())
+            .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
 
         override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] =
             transactor.transact:
@@ -82,7 +82,6 @@ object KeyValueStorage:
                 repo.findById(key) match 
                     case Some(dbTable)   => ZStream.fromIterable(dbTable.content.getBytes())
                     case _              => throw new ResourceNotFoundException("Referenced document does not exist")
-
 
         override def deleteBlob(key: Key): Task[Unit] = 
             transactor.transact:
@@ -106,7 +105,7 @@ object KeyValueStorage:
 
         override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = getContent(key, ContentType.Metadata).map(_._1)
 
-        private def saveData (key: Key, contentType: ContentType, content: ZStream[Any, Throwable, Byte]): Task[Unit] = 
+        private def saveData (key: Key, contentType: ContentType, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = 
             getBlobPath(key, true)
             .map(path => pathForContentType(key, path, contentType))
             .mapError(_ => new NonWritableArchiveException("Could not create blob file"))
@@ -125,12 +124,12 @@ object KeyValueStorage:
             .map(path => pathForContentType(key, path, ContentType.Blob))
             .flatMap(path => Files.move(content, path))
 
-        private def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte]): Task[Unit] = saveData(key, ContentType.Metadata, metadata)
+        private def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = saveData(key, ContentType.Metadata, metadata, overwrite)
 
-        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte]): Task[Unit] = saveData(key, ContentType.Blob,     content)
+        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = saveData(key, ContentType.Blob,     content, overwrite)
 
-        override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte]): Task[Unit] =
-            saveBlob(key, content) <&> saveMetadata(key, metadata)
+        override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] =
+            saveBlob(key, content, overwrite) <&> saveMetadata(key, metadata, overwrite)
 
         override def deleteBlob (key: Key): Task[Unit] =
             getBlobPath(key, false)

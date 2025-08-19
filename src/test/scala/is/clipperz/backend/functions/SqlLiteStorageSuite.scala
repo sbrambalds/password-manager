@@ -51,7 +51,7 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
     } +
     test("saveBlob - success") {
         for {
-          _ <- keyValueStorage.flatMap(_.saveBlobWithMetadata(testKey, testContent, testMetadata))
+          _ <- keyValueStorage.flatMap(_.saveBlobWithMetadata(testKey, testContent, testMetadata, false))
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
           result <- testContent.zip(content).map((a, b) => a == b).toIterator.map(_.map(_.getOrElse(false)).reduce(_ && _))
@@ -59,7 +59,7 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
     } +
     test("saveBlob with failing stream - success") {
         for {
-          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent).fork)
+          fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
           res <- assertZIO(fiber.await)(fails(isSubtype[EmptyContentException](anything)))
         } yield res

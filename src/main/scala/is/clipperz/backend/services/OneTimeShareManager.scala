@@ -65,7 +65,7 @@ object OneTimeShareManager:
             ZIO
                 .scoped:
                     keyBlobArchive
-                        .saveBlob(id, content)
+                        .saveBlob(id, content, false)
                         .map(_ => id)
                 .catchSome:
                     case ex: FileNotFoundException =>

@@ -97,22 +97,16 @@ object UserManager:
                 case ex => ZIO.fail(ex)
 
         override def saveUser(userCard: RemoteUserCard, overwrite: Boolean): Task[HexString] =
-            def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
-                Charset.Standard.utf8.encodeString(userCard.toJson)
-                .flatMap(blobChunks =>
-                    keyBlobStorage
-                    .saveBlob(
-                        userCard.c.toString,
-                        ZStream.fromChunks(blobChunks),
-                    )
-                    .map(_ => userCard.c)
+            // def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
+            Charset.Standard.utf8.encodeString(userCard.toJson)
+            .flatMap(blobChunks =>
+                keyBlobStorage
+                .saveBlob(
+                    userCard.c.toString,
+                    ZStream.fromChunks(blobChunks),
+                    overwrite
                 )
-
-            this.getUser(userCard.c).flatMap(optional => if optional.isDefined
-                then (if (overwrite) 
-                        then saveUserCard(userCard)
-                        else ZIO.fail(new ResourceConflictException("User already present")))
-                else saveUserCard(userCard)
+                .map(_ => userCard.c)
             )
 
         override def deleteUser(c: HexString): Task[Unit] =

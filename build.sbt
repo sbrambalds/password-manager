@@ -59,6 +59,14 @@ cleanTargetSubdir := {
   s"rm -rf ${path}" !
 }
 
+lazy val createDbDirectories = TaskKey[Unit]("createDbDirectories", "Create database directories")
+createDbDirectories := {
+  val dir = baseDirectory.value / "target" / "db"
+  if (!dir.exists()) {
+    IO.createDirectory(dir)
+  }
+}
+
 //=====================================================================
 
 ThisBuild / organization := "is.clipperz"

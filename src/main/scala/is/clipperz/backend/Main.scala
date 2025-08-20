@@ -22,8 +22,8 @@ import zio.http.netty.NettyConfig.LeakDetectionLevel
 import zio.http.Server.RequestStreaming
 import zio.http.Routes
 import java.io.File
-import zio.http.Path
 import com.augustnagro.magnum.magzio.* 
+import zio.http.Path
 
 object Main extends zio.ZIOAppDefault:
     override val bootstrap =
@@ -81,10 +81,11 @@ object Main extends zio.ZIOAppDefault:
                                             .maxThreads(nThreads)
 
 
-                    // ( Files.createDirectories(blobBasePath) <&> 
-                    //   Files.createDirectories(userBasePath) <&> 
-                    //   Files.createDirectories(oneTimeShareBasePath)
-                    // ) *>
+                    ( 
+                        Files.createDirectories(blobBasePath) <*>
+                        Files.createDirectories(userBasePath) <*>
+                        Files.createDirectories(oneTimeShareBasePath)
+                    ) *>
                     Server
                         .install(completeClipperzBackend)
                         .flatMap(port =>
@@ -130,8 +131,6 @@ object Main extends zio.ZIOAppDefault:
                                             .leakDetection(LeakDetectionLevel.PARANOID)
                                             .maxThreads(nThreads)
 
-                    // ( Files.createDirectories(args(2))
-                    // ) *>
                     Server
                         .install(completeClipperzBackend)
                         .flatMap(port =>

@@ -9,6 +9,9 @@ import is.clipperz.backend.Exceptions.*
 import zio.{ ZIO, ZLayer, Task }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder }
 import zio.stream.ZStream
+import is.clipperz.backend.otel.TracingAspect.MethodTracer
+import is.clipperz.backend.Main.validateEnv
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 // ============================================================================
 
@@ -65,8 +68,8 @@ object SRPStep2Response:
 // ============================================================================
 
 trait SrpManager:
-  def srpStep1(step1Data: SRPStep1Data, session: Session): Task[(SRPStep1Response, Session)]
-  def srpStep2(step2Data: SRPStep2Data, session: Session): Task[(SRPStep2Response, Session)]
+  def srpStep1(step1Data: SRPStep1Data, session: Session): ZIO[Tracing, Throwable, (SRPStep1Response, Session)]
+  def srpStep2(step2Data: SRPStep2Data, session: Session): ZIO[Tracing, Throwable, (SRPStep2Response, Session)]
 
 object SrpManager:
   case class SrpManagerV6a(
@@ -77,7 +80,7 @@ object SrpManager:
     val newRandomValue = () => prng.nextBytes(64)
     val configuration = srpFunctions.configuration
     val nn = configuration.group.nn
-    override def srpStep1(step1Data: SRPStep1Data, session: Session): Task[(SRPStep1Response, Session)] =
+    override def srpStep1(step1Data: SRPStep1Data, session: Session): ZIO[Tracing, Throwable, (SRPStep1Response, Session)] =
       userManager
         .getUser(step1Data.c)
         .flatMap(optionalUser =>
@@ -95,9 +98,9 @@ object SrpManager:
           val newSessionContext =
             session + (("c", step1Data.c.toString)) + (("b", b.toString)) + (("B", bb.toString)) + (("A", step1Data.aa.toString))
           (SRPStep1Response(s = s, bb = bb), newSessionContext)
-        }
+        } @@ MethodTracer("srpStep1")
 
-    override def srpStep2(step2Data: SRPStep2Data, session: Session): Task[(SRPStep2Response, Session)] =
+    override def srpStep2(step2Data: SRPStep2Data, session: Session): ZIO[Tracing, Throwable, (SRPStep2Response, Session)] =
       val aa = HexString(session("A").get)
       val bb = HexString(session("B").get)
       val b = HexString(session("b").get)
@@ -128,7 +131,7 @@ object SrpManager:
             result <- ZIO.succeed((SRPStep2Response(bytesToHex(m2), user.masterKey), session)) // TODO: what to put in session context
           } yield result
         else ZIO.fail(new BadRequestException(s"M1 is not correct => M1 SERVER ${bytesToHex(m1)} != M1 CLIENT ${step2Data.m1}"))
-      }
+      } @@ MethodTracer("srpStep2")
 
   def v6a(): ZLayer[UserManager & PRNG, Throwable, SrpManager] =
     val srpFunctions = new SrpFunctionsV6a()

@@ -18,8 +18,15 @@ import zio.http.endpoint.Endpoint
 import zio.http.endpoint.openapi.OpenAPIGen
 import zio.json.{ EncoderOps, JsonEncoder }
 import zio.json.ast.Json
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.TracingAspect.EndpointTracer
+import is.clipperz.backend.otel.PropagatorProvider
 
-val loginApi: Routes[SessionManager & SrpManager, Throwable] = Routes(
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.semconv.HttpAttributes
+
+
+val loginApi: Routes[SessionManager & SrpManager & Tracing & PropagatorProvider, Throwable] = Routes(
     Method.POST / "api" / "login" / "step1" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
         .service[SessionManager]
@@ -39,6 +46,7 @@ val loginApi: Routes[SessionManager & SrpManager, Throwable] = Routes(
         )
         .map(step1Response => Response.json(step1Response.toJson))
         @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ,
     Method.POST / "api" / "login" / "step2" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
@@ -57,4 +65,5 @@ val loginApi: Routes[SessionManager & SrpManager, Throwable] = Routes(
         )
         .map(step2Response => Response.json(step2Response.toJson))
         @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 )

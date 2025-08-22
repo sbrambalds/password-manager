@@ -13,8 +13,10 @@ import zio.http.{ Method, Response, Request, Routes, Status, handler, string }
 import zio.json.EncoderOps
 import zio.stream.ZStream
 import is.clipperz.backend.services.CardsSignupData
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.PropagatorProvider
 
-val usersApi: Routes[BlobManager & UserManager & SessionManager, Throwable] = Routes(
+val usersApi: Routes[BlobManager & UserManager & SessionManager & Tracing & PropagatorProvider, Throwable] = Routes(
     Method.POST / "api" / "users" / string("c") -> (handler: (c: String, request: Request) =>
         ZIO
         .service[UserManager]

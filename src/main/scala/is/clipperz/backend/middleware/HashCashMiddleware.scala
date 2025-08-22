@@ -13,8 +13,9 @@ import zio.{ZIO, Cause, Trace}
 import zio.http.{ Handler, HandlerAspect, Header, Headers, Middleware, Request, Response, Routes, Status }
 import zio.http.Handler.RequestHandlerSyntax
 import zio.json.EncoderOps
-
-type TollMiddleware = HandlerAspect[TollManager & SessionManager, Any]
+import is.clipperz.backend.otel.TracingAspect.MethodTracer
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.PropagatorProvider
 
 def verifyRequestToll(request: Request, challengeType: ChallengeType, nextChallengeType: ChallengeType) =
   ZIO.service[SessionManager].zip(ZIO.service[TollManager])
@@ -34,23 +35,31 @@ def verifyRequestToll(request: Request, challengeType: ChallengeType, nextChalle
           } yield (tollIsValid, challengeForNextStep, session.key)
         )
       })
-    }.mapError(customMapError) @@ LogAspect.logAnnotateRequestData(request)
+    }.mapError(customMapError)
+    @@ LogAspect.logAnnotateRequestData(request)
+    @@ MethodTracer("verifyRequestToll")
 
-def hashcash(challengeType: ChallengeType, nextChallengeType: ChallengeType) = new Middleware[SessionManager & TollManager]:
-  override def apply[Env1 <: SessionManager & TollManager, Err](routes: Routes[Env1, Err]): Routes[Env1, Err] =
+def hashcash(challengeType: ChallengeType, nextChallengeType: ChallengeType) = new Middleware[SessionManager & TollManager & Tracing & PropagatorProvider]:
+  override def apply[Env1 <: SessionManager & TollManager & Tracing & PropagatorProvider, Err](routes: Routes[Env1, Err]): Routes[Env1, Err] =
     routes.transform(handler => 
         Handler.fromFunctionZIO[Request] { request =>
-            verifyRequestToll(request, challengeType, nextChallengeType)
-            .map((isRequestTollValid, newToll, sessionKey) =>
-                ( if isRequestTollValid
-                  then handler
-                  else Handler
-                        .status(Status.PaymentRequired)
-                        .addHeader(Header.Connection.Close)
-                ).addHeader(TollManager.tollHeader,              newToll.toll.toString)
-                 .addHeader(TollManager.tollCostHeader,          newToll.cost.toString)
-                 .addHeader(SessionManager.sessionKeyHeaderName, sessionKey)
-                 
+            ZIO.service[Tracing].zip(ZIO.service[PropagatorProvider]).flatMap((tracing, propagatorProvider) => 
+                verifyRequestToll(request, challengeType, nextChallengeType)
+                .map((isRequestTollValid, newToll, sessionKey) =>
+                    ( if isRequestTollValid
+                      then handler
+                      else Handler
+                            .status(Status.PaymentRequired)
+                            .addHeader(Header.Connection.Close)
+                    ).addHeader(TollManager.tollHeader,              newToll.toll.toString)
+                     .addHeader(TollManager.tollCostHeader,          newToll.cost.toString)
+                     .addHeader(SessionManager.sessionKeyHeaderName, sessionKey)
+                     
+                )
+                @@ tracing.aspects.extractSpan(
+                    propagatorProvider.getTracePropagator()
+                ,   propagatorProvider.getIncomingCarrier()
+                ,   s"hashcashMiddleware")
             )
         }.flatten
     )

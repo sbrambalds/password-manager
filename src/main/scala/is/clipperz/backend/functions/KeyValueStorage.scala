@@ -28,6 +28,7 @@ import zio.Unsafe
 import java.io.IOException
 import zio.Chunk
 import scala.collection.mutable.ArraySeq.ofBoolean
+import is.clipperz.backend.otel.TracingAspect.MethodTracer
 
 // ============================================================================
 

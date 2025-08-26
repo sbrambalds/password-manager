@@ -20,6 +20,11 @@ import zio.http.{ Method, Path, Response, Request, Status, Routes, Headers, Body
 import zio.json.{ EncoderOps, JsonDecoder, DeriveJsonDecoder, JsonEncoder, DeriveJsonEncoder }
 import zio.stream.{ ZStream }
 import zio.nio.charset.Charset
+import com.azul.crs.internal.asm.MethodTooLargeException
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.TracingAspect.MethodTracer
+import is.clipperz.backend.otel.PropagatorProvider
+import is.clipperz.backend.otel.TracingAspect.EndpointTracer
 
 // ------------------------------------------------------------------------------------
 
@@ -57,10 +62,11 @@ val oneTimeShareApi = Routes (
             .flatMap ((secret: OneTimeSecret) =>
                 Charset.Standard.utf8.encodeString(secret.toJson)
                 .flatMap(data => archive.saveSecret(ZStream.fromChunks(data)))
-                // archive.saveSecret(ZStream.fromChunks(Chunk.fromArray((secret).toJson.getBytes(StandardCharsets.UTF_8).nn)))
             )
         ) 
-        .map(id => Response.text(s"${id}")) @@ LogAspect.logAnnotateRequestData(request)
+        .map(id => Response.text(s"${id}")) 
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
     ,
     Method.GET / "api" / "redeem" / string("id") -> handler : (id: String, request: Request)=>
         ZIO
@@ -83,11 +89,15 @@ val oneTimeShareApi = Routes (
                     )
             )
         )
-        .map((version: Option[SecretVersion], bytes: ZStream[Any, Throwable, Byte], contentLength: Long) => 
-            Response(
+        .flatMap((version: Option[SecretVersion], bytes: ZStream[Tracing, Throwable, Byte], contentLength: Long) => 
+            for {
+                body <- Body.fromStreamEnv[Tracing](bytes, contentLength)
+            } yield(
+                Response(
                 status  = Status.Ok,
                 headers = version.map(v => Headers("clipperz-onetimesecret-version", v.toJson)).getOrElse(Headers.empty),
-                body    = Body.fromStream(bytes, contentLength)
-            )
-        ) @@ LogAspect.logAnnotateRequestData(request)
+                body    = body
+            ))
+        )
+        @@ LogAspect.logAnnotateRequestData(request)
 )

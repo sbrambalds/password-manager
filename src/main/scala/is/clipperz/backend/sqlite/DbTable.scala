@@ -3,7 +3,6 @@ package is.clipperz.backend.sqlite
 import com.augustnagro.magnum.magzio.* 
 import zio.ZIO
 import is.clipperz.backend.Exceptions.ResourceNotFoundException
-import is.clipperz.backend.otel.TracingAspect.MethodTracer
 
 type Key = String
 

@@ -1,10 +1,25 @@
 import Util.*
 
-addCommandAlias("buildAll", "installPurescript; buildPurescript; compile")
-addCommandAlias("runAllFileSystem", "installPurescript; buildPurescript; packagePurescript; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\"")
-addCommandAlias("runAllDb", "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\"")
-addCommandAlias("cleanAll", "clean; cleanDependenciesPurescript")
-addCommandAlias("cleanArchive", "cleanTargetSubdir archive")
+addCommandAlias(
+  "buildAll", 
+  "installPurescript; buildPurescript; compile"
+  )
+addCommandAlias(
+  "runAllFileSystem", 
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\""
+  )
+addCommandAlias(
+  "runAllDb", 
+  "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\""
+)
+addCommandAlias(
+  "cleanAll", 
+  "clean; cleanDependenciesPurescript"
+  )
+addCommandAlias(
+  "cleanArchive", 
+  "cleanTargetSubdir archive"
+  )
 addCommandAlias(
   "testPurescript",
   "installPurescript; buildPurescript; runTestPurescript",

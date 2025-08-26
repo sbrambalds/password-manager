@@ -106,7 +106,7 @@ object SrpManager:
       val b = HexString(session("b").get)
       val c = HexString(session("c").get)
       val zioUser = userManager.getUser(c).flatMap(u => ZIO.attempt(u.get))
-      val zioK: Task[Array[Byte]] = for {
+      val zioK: ZIO[Tracing, Throwable, Array[Byte]] = for {
         u : Array[Byte] <- srpFunctions.computeU(aa.toByteArray, bb.toByteArray)
         user: RemoteUserCard <- zioUser
         v: BigInt <- ZIO.attempt(user.v.toBigInt)
@@ -114,7 +114,7 @@ object SrpManager:
         kk: Array[Byte] <- srpFunctions.computeK(secret)
         kk: Array[Byte] <- configuration.hash(ZStream.fromIterable(bigIntToBytes(secret)))
       } yield kk
-      val zioM1: Task[Array[Byte]] = for {
+      val zioM1: ZIO[Tracing, Throwable,Array[Byte]] = for {
         user: RemoteUserCard <- zioUser
         kk: Array[Byte] <- zioK
         m1: Array[Byte] <- srpFunctions.computeM1(user.c.toByteArray, user.s.toByteArray, aa.toByteArray, bb.toByteArray, kk)

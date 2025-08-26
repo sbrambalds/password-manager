@@ -18,6 +18,7 @@ import com.augustnagro.magnum.magzio.Transactor
 import is.clipperz.backend.sqlite.UserRepo
 import is.clipperz.backend.sqlite.UserDb
 import com.augustnagro.magnum.magzio.sql
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 // ============================================================================
 
@@ -82,13 +83,13 @@ object UserCard:
 // ============================================================================
 
 trait UserManager:
-    def getUser(username: HexString): Task[Option[RemoteUserCard]]
-    def saveUser(user: RemoteUserCard, overwrite: Boolean): Task[HexString]
-    def deleteUser(c: HexString): Task[Unit]
+    def getUser(username: HexString): ZIO[Tracing, Throwable, Option[RemoteUserCard]]
+    def saveUser(user: RemoteUserCard, overwrite: Boolean): ZIO[Tracing, Throwable, HexString]
+    def deleteUser(c: HexString): ZIO[Tracing, Throwable, Unit]
 
 object UserManager:
     case class KeyValueUserManager(keyBlobStorage: KeyValueStorage) extends UserManager:
-        override def getUser(username: HexString): Task[Option[RemoteUserCard]] =
+        override def getUser(username: HexString): ZIO[Tracing, Throwable, Option[RemoteUserCard]] =
             keyBlobStorage
             .getBlob(username.toString).map(_._1)
             .flatMap(fromStream[RemoteUserCard](_).map(Some.apply))
@@ -96,8 +97,7 @@ object UserManager:
                 case ex: ResourceNotFoundException => ZIO.succeed(None)
                 case ex => ZIO.fail(ex)
 
-        override def saveUser(userCard: RemoteUserCard, overwrite: Boolean): Task[HexString] =
-            // def saveUserCard(userCard: RemoteUserCard): Task[HexString] =
+        override def saveUser(userCard: RemoteUserCard, overwrite: Boolean): ZIO[Tracing, Throwable, HexString] =
             Charset.Standard.utf8.encodeString(userCard.toJson)
             .flatMap(blobChunks =>
                 keyBlobStorage
@@ -109,7 +109,7 @@ object UserManager:
                 .map(_ => userCard.c)
             )
 
-        override def deleteUser(c: HexString): Task[Unit] =
+        override def deleteUser(c: HexString): ZIO[Tracing, Throwable, Unit] =
             this
             .getUser(c)
             .flatMap(optional =>
@@ -132,7 +132,4 @@ object UserManager:
             KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
                 .map(KeyValueUserManager(_))
                 .provideLayer(transactor)
-            // for {
-            //     sqlLiteKeyValueStorage <- KeyValueStorage.SqlLiteKeyValueStorage[UserDb]("UserDb", new UserRepo(), UserDb.apply)
-            // } yield(KeyValueUserManager(sqlLiteKeyValueStorage))
         )

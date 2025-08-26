@@ -26,6 +26,7 @@ import com.augustnagro.magnum.Repo
 // import is.clipperz.backend.sqlite.
 import is.clipperz.backend.sqlite.OneTimeShareDb
 import is.clipperz.backend.sqlite.OneTimeShareRepo
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 // ----------------------------------------------------------------------------
 
@@ -47,20 +48,20 @@ implicit val encoder: JsonEncoder[DateTime] = JsonEncoder[String].contramap(_.to
 // ----------------------------------------------------------------------------
 
 trait OneTimeShareManager:
-    def getSecret(id: SecretId): Task[(OneTimeSecret, Long)]
-    def saveSecret(content: ZStream[Any, Throwable, Byte]): Task[SecretId]
-    def deleteSecret(id: SecretId): Task[Unit]
+    def getSecret(id: SecretId): ZIO[Tracing, Throwable, (OneTimeSecret, Long)]
+    def saveSecret(content: ZStream[Any, Throwable, Byte]): ZIO[Tracing, Throwable, SecretId]
+    def deleteSecret(id: SecretId): ZIO[Tracing, Throwable, Unit]
 
 object OneTimeShareManager:
 
     case class KeyValueOneTimeShareManager(keyBlobArchive: KeyValueStorage) extends OneTimeShareManager:
-        override def getSecret(id: SecretId): Task[(OneTimeSecret, Long)] =
+        override def getSecret(id: SecretId): ZIO[Tracing, Throwable, (OneTimeSecret, Long)] =
             keyBlobArchive.getBlob(id).flatMap((content, contentLength) => fromStream[OneTimeSecret](content).zip(ZIO.succeed(contentLength)))
         
-        override def deleteSecret(id: SecretId): Task[Unit] = 
+        override def deleteSecret(id: SecretId): ZIO[Tracing, Throwable, Unit] = 
             keyBlobArchive.deleteBlob(id)
 
-        override def saveSecret(content: ZStream[Any, Throwable, Byte]): Task[SecretId] =
+        override def saveSecret(content: ZStream[Any, Throwable, Byte]): ZIO[Tracing, Throwable, SecretId] =
             val id = UUID.randomUUID().nn.toString();
             ZIO
                 .scoped:

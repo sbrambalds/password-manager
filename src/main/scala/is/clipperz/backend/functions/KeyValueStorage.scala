@@ -29,17 +29,21 @@ import java.io.IOException
 import zio.Chunk
 import scala.collection.mutable.ArraySeq.ofBoolean
 import is.clipperz.backend.otel.TracingAspect.MethodTracer
+import com.zaxxer.hikari.metrics.MetricsTracker
+import is.clipperz.backend.Main.validateEnv
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.PropagatorProvider
 
 // ============================================================================
 
 type Key = String
 
 trait KeyValueStorage:
-    def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit]
-    def getBlob              (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)]
-    def getMetadata          (key: Key): Task[ZStream[Any, Throwable, Byte]]
-    def deleteBlob           (key: Key): Task[Unit]
-    def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit]
+    def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit]
+    def getBlob              (key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)]
+    def getMetadata          (key: Key): ZIO[Tracing, Throwable, ZStream[Any, Throwable, Byte]]
+    def deleteBlob           (key: Key): ZIO[Tracing, Throwable, Unit]
+    def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit]
 
 object KeyValueStorage:
     val WAIT_TIME = 10000
@@ -52,10 +56,11 @@ object KeyValueStorage:
 
     case class SqlLiteKeyValueStorage[T <: DbTable] private (repo: Repo[T, T, Key], transactor: Transactor, factory: (Key, String, Array[Byte]) => T) extends KeyValueStorage : 
         
-        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] =
+        override def saveBlob(key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] =
             saveBlobWithMetadata(key, content, ZStream.empty, overwrite)
+            @@ MethodTracer("saveBlob")
 
-        override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = 
+        override def saveBlobWithMetadata(key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
             (for {
                 identifier  <- metadata.runCollect
                                     .map(chunck => new String(chunck.toArray, StandardCharsets.UTF_8))
@@ -67,31 +72,34 @@ object KeyValueStorage:
                             case true  => repo.update(entity)
                             case false => repo.insert(entity)
                         }
-                        
                     }    
             } yield ())
-            .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
+            .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME)
+            ) @@ MethodTracer("saveBlobMetadata")
 
-        override def getBlob(key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] =
-            transactor.transact:
+        override def getBlob(key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
+            (transactor.transact:
                 repo.findById(key) match
-                    case Some(dbTable)   => (ZStream.fromIterable(dbTable.blob), dbTable.blob.length)
+                    case Some(dbTable)   => (ZStream.fromIterable(dbTable.blob), dbTable.blob.length.toLong)
                     case _              => throw new ResourceNotFoundException("Referenced document does not exist")
+            ) @@ MethodTracer("getBlob")
             
-        override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = 
-            transactor.transact: 
+        override def getMetadata(key: Key): ZIO[Tracing, Throwable, ZStream[Any, Throwable, Byte]] = 
+            (transactor.transact: 
                 repo.findById(key) match 
                     case Some(dbTable)   => ZStream.fromIterable(dbTable.content.getBytes())
                     case _              => throw new ResourceNotFoundException("Referenced document does not exist")
+            ) @@ MethodTracer("getMetaData")
 
-        override def deleteBlob(key: Key): Task[Unit] = 
-            transactor.transact:
+        override def deleteBlob(key: Key): ZIO[Tracing, Throwable, Unit] = 
+            (transactor.transact:
                 repo.deleteById(key)
             .mapError(_ => new ResourceNotFoundException("Referenced document does not exist"))
+            )@@ MethodTracer("deleteBlob")
 
     case class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
-        private def getContent (key: Key, contentType: ContentType): Task[(ZStream[Any, Throwable, Byte], Long)] =
+        private def getContent (key: Key, contentType: ContentType): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
             getBlobPath(key, false)
             .map(path => pathForContentType(key, path, contentType))
             .flatMap(path =>
@@ -102,11 +110,11 @@ object KeyValueStorage:
                 })
             )
 
-        override def getBlob (key: Key): Task[(ZStream[Any, Throwable, Byte], Long)] = getContent(key, ContentType.Blob)
+        override def getBlob (key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] = getContent(key, ContentType.Blob) @@ MethodTracer("getBlobContent")
 
-        override def getMetadata(key: Key): Task[ZStream[Any, Throwable, Byte]] = getContent(key, ContentType.Metadata).map(_._1)
+        override def getMetadata(key: Key): ZIO[Tracing, Throwable, ZStream[Any, Throwable, Byte]] = getContent(key, ContentType.Metadata).map(_._1) @@ MethodTracer("getMetadata")
 
-        private def saveData (key: Key, contentType: ContentType, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = 
+        private def saveData (key: Key, contentType: ContentType, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
             getBlobPath(key, true)
             .map(path => pathForContentType(key, path, contentType))
             .mapError(_ => new NonWritableArchiveException("Could not create blob file"))
@@ -120,19 +128,20 @@ object KeyValueStorage:
                 case ex: NonReadableArchiveException => ZIO.fail(ex)
                 case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
 
-        private def moveFile (key: Key, content: Path): Task[Unit] =
+        private def moveFile (key: Key, content: Path): ZIO[Tracing, Throwable, Unit] =
             getBlobPath(key, true)
             .map(path => pathForContentType(key, path, ContentType.Blob))
             .flatMap(path => Files.move(content, path))
 
-        private def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = saveData(key, ContentType.Metadata, metadata, overwrite)
+        private def saveMetadata (key: Key, metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, ContentType.Metadata, metadata, overwrite) @@ MethodTracer("saveMetadata")
 
-        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] = saveData(key, ContentType.Blob,     content, overwrite)
+        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, ContentType.Blob,     content, overwrite) @@ MethodTracer("saveBlob")
 
-        override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): Task[Unit] =
-            saveBlob(key, content, overwrite) <&> saveMetadata(key, metadata, overwrite)
+        override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] =
+            saveBlob(key, content, overwrite) <&> saveMetadata(key, metadata, overwrite) 
+            @@ MethodTracer("saveBlobWithMetadata")
 
-        override def deleteBlob (key: Key): Task[Unit] =
+        override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] =
             getBlobPath(key, false)
                 .flatMap(path =>
                     Files.deleteIfExists(pathForContentType(key, path, ContentType.Blob))
@@ -141,6 +150,7 @@ object KeyValueStorage:
                 )
             // TODO: delete empty folder?
             .foldZIO(err => ZIO.fail(new NonWritableArchiveException(err.toString())), _ => ZIO.succeed(()))
+            @@ MethodTracer("deleteBlob")
 
         private def computeBlobPath (key: Key): Path =
             val piecesLength: Int = key.length / levels
@@ -149,7 +159,7 @@ object KeyValueStorage:
                 yield key.substring(i * piecesLength, i * piecesLength + piecesLength).nn
             basePath / pieces.mkString("/")
 
-        private def getBlobPath (key: Key, createFolders: Boolean): Task[Path] =
+        private def getBlobPath (key: Key, createFolders: Boolean): ZIO[Tracing, Throwable, Path] =
             val path: Path = computeBlobPath(key)
             Files.exists(path)
             .zip(Files.isDirectory(path))

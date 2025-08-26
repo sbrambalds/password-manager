@@ -19,6 +19,7 @@ import is.clipperz.backend.functions.KeyValueStorage
 import com.augustnagro.magnum.magzio.Transactor
 import com.augustnagro.magnum.Repo
 import is.clipperz.backend.functions.Key
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 // ----------------------------------------------------------------------------
 
@@ -31,18 +32,18 @@ type BlobHash = HexString
 
 
 trait BlobManager:
-    def getBlob    (hash: BlobHash): Task[(ZStream[Any, Throwable, Byte], Long)]
-    def saveBlob   (hash: BlobHash, identifier: HexString, content: ZStream[Any, Throwable, Byte]): Task[BlobHash]
-    def deleteBlob (hash: BlobHash, identifier: HexString): Task[Unit]
+    def getBlob    (hash: BlobHash): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)]
+    def saveBlob   (hash: BlobHash, identifier: HexString, content: ZStream[Any, Throwable, Byte]): ZIO[Tracing, Throwable, BlobHash]
+    def deleteBlob (hash: BlobHash, identifier: HexString): ZIO[Tracing, Throwable, Unit]
 
 object BlobManager:
     val WAIT_TIME = 10000
 
     case class KeyValueBlobManager(keyValueStorage: KeyValueStorage, tmpDir: Path) extends BlobManager:
-        override def getBlob(hash: BlobHash): Task[(ZStream[Any, Throwable, Byte], Long)] =
+        override def getBlob(hash: BlobHash): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
             keyValueStorage.getBlob(hash.toString)
 
-        override def saveBlob(hash: BlobHash, identifier: HexString, content: ZStream[Any, Throwable, Byte]): Task[BlobHash] =
+        override def saveBlob(hash: BlobHash, identifier: HexString, content: ZStream[Any, Throwable, Byte]):  ZIO[Tracing, Throwable, BlobHash] =
             ZIO.scoped:
                 Files.createTempFileInScoped(dir=tmpDir, suffix=".tmp", prefix=None, fileAttributes = Nil)
                 .flatMap { tmpFile => content
@@ -77,7 +78,7 @@ object BlobManager:
                         case ex: Exception              => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
                 }
 
-        override def deleteBlob(hash: BlobHash, identifier: HexString): Task[Unit] =
+        override def deleteBlob(hash: BlobHash, identifier: HexString): ZIO[Tracing, Throwable, Unit] =
             ZIO.scoped:
                 this.getBlobIdentifier(hash)
                     .flatMap(storedIdentifier =>
@@ -86,7 +87,7 @@ object BlobManager:
                         else ZIO.fail(new BadRequestException(s"Wrong blob identifier provided"))
                     )
             
-        private def getBlobIdentifier(hash: BlobHash): Task[HexString] =
+        private def getBlobIdentifier(hash: BlobHash): ZIO[Tracing, Throwable, HexString] =
             keyValueStorage
                 .getMetadata(hash.toString)
                 .flatMap(_.run(ZSink.collectAll[Byte]))

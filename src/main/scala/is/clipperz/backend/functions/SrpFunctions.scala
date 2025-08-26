@@ -12,6 +12,7 @@ import java.security.MessageDigest
 
 import zio.{ ZIO, Task, Chunk }
 import zio.stream.{ ZStream, ZSink }
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 trait SrpFunctions:
   def computeA(a: BigInt): BigInt
@@ -28,7 +29,7 @@ trait SrpFunctions:
       v: BigInt,
       u: BigInt,
     ): BigInt
-  def computeU(aa: Array[Byte], bb: Array[Byte]): Task[Array[Byte]]
+  def computeU(aa: Array[Byte], bb: Array[Byte]): ZIO[Tracing, Throwable, Array[Byte]]
   def computeV(x: BigInt): BigInt
   def computeM1(
       c: Array[Byte],
@@ -36,13 +37,13 @@ trait SrpFunctions:
       aa: Array[Byte],
       bb: Array[Byte],
       kk: Array[Byte],
-    ): Task[Array[Byte]]
+    ): ZIO[Tracing, Throwable, Array[Byte]]
   def computeM2(
       aa: Array[Byte],
       m1: Array[Byte],
       kk: Array[Byte],
-    ): Task[Array[Byte]]
-  def computeK(ss: BigInt): Task[Array[Byte]]
+    ): ZIO[Tracing, Throwable, Array[Byte]]
+  def computeK(ss: BigInt): ZIO[Tracing, Throwable, Array[Byte]]
 
 object SrpFunctions:
   val baseConfiguration: SRPConfigV6a =
@@ -96,7 +97,7 @@ object SrpFunctions:
         aa: Array[Byte],
         bb: Array[Byte],
         kk: Array[Byte],
-      ): Task[Array[Byte]] =
+      ): ZIO[Tracing, Throwable, Array[Byte]] =
       val nn = this.configuration.group.nn
       val g = this.configuration.group.g
       for {
@@ -111,8 +112,8 @@ object SrpFunctions:
         aa: Array[Byte],
         m1: Array[Byte],
         kk: Array[Byte],
-      ): Task[Array[Byte]] =
+      ): ZIO[Tracing, Throwable, Array[Byte]] =
       hashOfArrays(baseConfiguration.hash, aa, m1, kk)
 
-    override def computeK(ss: BigInt): Task[Array[Byte]] =
+    override def computeK(ss: BigInt): ZIO[Tracing, Throwable, Array[Byte]] =
       baseConfiguration.hash(ZStream.fromIterable(bigIntToBytes(ss)))

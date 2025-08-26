@@ -16,11 +16,14 @@ import zio.stream.{ ZStream, ZSink }
 import zio.nio.file.{ Files, Path as PathNIO }
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.PropagatorProvider
+import is.clipperz.backend.otel.TracingAspect.EndpointTracer
 
 private case class Identifier(value: HexString)
 private case class Blob(identifier: Option[Identifier], hash: Option[HexString], data: Option[ZStream[Any, Nothing, Byte]])
 
-val blobsApi: Routes[BlobManager, Throwable] = Routes(
+val blobsApi: Routes[BlobManager & Tracing & PropagatorProvider, Throwable] = Routes(
     Method.POST / "api" / "blobs" -> handler: (request: Request) =>
         ZIO.scoped:
             ZIO.service[BlobManager]
@@ -49,7 +52,8 @@ val blobsApi: Routes[BlobManager, Throwable] = Routes(
                 })
             )
             .map(result => Response.ok)
-            // @@ LogAspect.logAnnotateRequestData(request)
+            @@ LogAspect.logAnnotateRequestData(request)
+            @@ EndpointTracer()
 ,
     Method.DELETE / "api" / "blobs" / string("hash") -> handler: (hash: String, request: Request) =>
         ZIO
@@ -67,7 +71,8 @@ val blobsApi: Routes[BlobManager, Throwable] = Routes(
         .map:
             case 1  => Response.ok
             case _  => Response(status = Status.NotFound)
-        // @@ LogAspect.logAnnotateRequestData(request)
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ,
     Method.GET / "api" / "blobs" / string("hash") -> handler: (hash: String, request: Request) =>
         ZIO
@@ -81,5 +86,6 @@ val blobsApi: Routes[BlobManager, Throwable] = Routes(
                             .addHeader("Content-Type", "application/octet-stream"),
             )
         )
-        // @@ LogAspect.logAnnotateRequestData(request)
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 )

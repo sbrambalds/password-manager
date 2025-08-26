@@ -67,6 +67,22 @@ createDbDirectories := {
   }
 }
 
+lazy val createFSDirectories = TaskKey[Unit]("createFSDirectories", "Create blobs directories")
+createFSDirectories := {
+  val blob = baseDirectory.value / "target" / "archive" / "blobs"
+  val oneTimeShare = baseDirectory.value / "target" / "archive" / "one_time_share"
+  val user = baseDirectory.value / "target" / "archive" / "users"
+  if (!blob.exists()) {
+    IO.createDirectory(blob)
+  }
+  if (!oneTimeShare.exists()) {
+    IO.createDirectory(oneTimeShare)
+  }
+  if (!user.exists()) {
+    IO.createDirectory(user)
+  }
+}
+
 //=====================================================================
 
 ThisBuild / organization := "is.clipperz"

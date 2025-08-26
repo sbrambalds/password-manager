@@ -15,9 +15,10 @@ import zio.stream.ZStream
 import is.clipperz.backend.services.CardsSignupData
 import zio.telemetry.opentelemetry.tracing.Tracing
 import is.clipperz.backend.otel.PropagatorProvider
+import is.clipperz.backend.otel.TracingAspect.EndpointTracer
 
 val usersApi: Routes[BlobManager & UserManager & SessionManager & Tracing & PropagatorProvider, Throwable] = Routes(
-    Method.POST / "api" / "users" / string("c") -> (handler: (c: String, request: Request) =>
+    Method.POST / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
         .service[UserManager]
         .zip(ZIO.service[BlobManager])
@@ -35,7 +36,6 @@ val usersApi: Routes[BlobManager & UserManager & SessionManager & Tracing & Prop
             fromStream[SignupData](content)
                 .flatMap { signupData =>
                 if HexString(c) == signupData.user.c then
-                    // Returns an effect that executes both this effect and the specified effect, in parallel, combining their results into a tuple. If either side fails, then the other side will be interrupted.
                     (   userManager.saveUser(remoteFromRequest(signupData.user), false)
                     <&> blobManager.saveBlob(signupData.indexCardReference, signupData.indexCardIdentifier, ZStream.fromIterable(signupData.indexCardContent.toByteArray))
                     <&> blobManager.saveBlob(signupData.userInfoReference,  signupData.userInfoIdentifier,  ZStream.fromIterable(signupData.userInfoContent.toByteArray))
@@ -52,10 +52,11 @@ val usersApi: Routes[BlobManager & UserManager & SessionManager & Tracing & Prop
                 }
             )
         )
-        .map(results => Response.text(results._1.toString)) @@ LogAspect.logAnnotateRequestData(request)
-        )
-) ++
-Routes( 
+        .map(results => Response.text(results._1.toString))
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer() 
+) ++ 
+Routes(
     Method.PUT / "api"  / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
         .service[UserManager]
@@ -94,7 +95,9 @@ Routes(
                 }
             )
         )
-        .map(_ => Response.ok) @@ LogAspect.logAnnotateRequestData(request)
+        .map(_ => Response.ok)
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ,  
     Method.PATCH / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         ZIO
@@ -119,7 +122,9 @@ Routes(
                     }
             )
         )
-        .map(_ => Response.ok) @@ LogAspect.logAnnotateRequestData(request)
+        .map(_ => Response.ok)
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ,
     Method.GET / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         (for {
@@ -129,6 +134,7 @@ Routes(
             case None       => Response(status = Status.NotFound)
             case Some(card) => Response.json(card.masterKey.toJson)
         )) @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ,
     Method.DELETE / "api" / "users" / string("c") -> handler: (c: String, request: Request) =>
         (for {
@@ -136,5 +142,7 @@ Routes(
             sessionManager <- ZIO.service[SessionManager]
             _              <- userManager.deleteUser(HexString(c))
             _              <- sessionManager.deleteSession(request)
-        } yield Response.text(c)) @@ LogAspect.logAnnotateRequestData(request)
+        } yield Response.text(c)) 
+        @@ LogAspect.logAnnotateRequestData(request)
+        @@ EndpointTracer()
 ) @@ authorizedMiddleware(req => ZIO.attempt(req.path.segments.last))

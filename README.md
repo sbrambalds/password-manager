@@ -1,4 +1,4 @@
-# Clipperz 
+# Clipperz
 
 ## What is Clipperz
 Clipperz is an online password manager; the current application is available [here](https://clipperz.is). Given its age, it is high time to reimplement and improve it. This branch contains the new version of Clipperz, written in Purescript and Scala.
@@ -10,7 +10,7 @@ The backend uses Scala, in particular the [ZIO](https://github.com/zio/zio) libr
 
 The implementation of SRP v6a is self implemented both in Purescript and Scala.
 
-### Current status - 2/06/2024
+### Current status - 02/06/2024
 In the current stage of development the backend is functionally complete.
 The frontend is functionally identical to the current version, except for attachments, that we are not 100% sure we are going to keep around. Another important thing yet to be implemented is a cryptographically secure prng.
 On the other hand during the development we have added a few smaller features (like Markdown in notes and saving the password preferences for each locked field) and a big new feature that gives the option to sync the data to the local storage, allowing access to the account with no internet connection.
@@ -21,8 +21,8 @@ ALL the code included in this project, if not otherwise stated, is released with
 
 ## Developing
 Necessary tools:
-- `NodeJS`: if on a Unix like system, our advice is to use [`nvm`](http://nvm.sh), otherwise you can find [here](https://nodejs.org/en/) the official distribution
-- [`Scala 3 + sbt`](https://www.scala-lang.org/download/)
+- `NodeJS`, lts/iron -> v20.19.3 : if on a Unix like system, our advice is to use [`nvm`](http://nvm.sh), otherwise you can find [here](https://nodejs.org/en/) the official distribution
+- [`Scala 3 + sbt`](https://www.scala-lang.org/download/), version 3.5.1
 
 ### Building and running the application
 All the building and running of the application is managed by sbt, that under the hood uses yarn to manage the Purescript side.
@@ -64,6 +64,3 @@ To run:
 ```
 docker run -p 8080:8080 -v ${PWD}/target/archive/user:/archive/user -v ${PWD}/target/archive/blob:/archive/blob clipperz
 ```
-
-
-

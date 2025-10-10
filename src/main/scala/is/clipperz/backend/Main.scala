@@ -72,61 +72,61 @@ object Main extends zio.ZIOAppDefault:
 
     val run = ZIOAppArgs.getArgs.flatMap ( args => {
         args(0) match {
-            //case "fileSystem" => {
-            //     if args.length == 5
-            //     then
-            //         val port = args(1).toInt
-            //         val blobBasePath         = FileSystem.default.getPath(args(2))
-            //         val userBasePath         = FileSystem.default.getPath(args(3))
-            //         val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
+            case "fileSystem" => {
+                if args.length == 5
+                then
+                    val port = args(1).toInt
+                    val blobBasePath         = FileSystem.default.getPath(args(2))
+                    val userBasePath         = FileSystem.default.getPath(args(3))
+                    val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
 
-            //         val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
+                    val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
 
-            //         val config        = Server.Config.default
-            //                                 .responseCompression(Server.Config.ResponseCompressionConfig.default)
-            //                                 .port(port)
-            //                                 .enableRequestStreaming
-            //         val nettyConfig   = NettyConfig.default
-            //                                 .leakDetection(LeakDetectionLevel.PARANOID)
-            //                                 .maxThreads(nThreads)
+                    val config        = Server.Config.default
+                                            .responseCompression(Server.Config.ResponseCompressionConfig.default)
+                                            .port(port)
+                                            .enableRequestStreaming
+                    val nettyConfig   = NettyConfig.default
+                                            .leakDetection(LeakDetectionLevel.PARANOID)
+                                            .maxThreads(nThreads)
 
 
-            //         ( 
-            //             Files.createDirectories(blobBasePath) <*>
-            //             Files.createDirectories(userBasePath) <*>
-            //             Files.createDirectories(oneTimeShareBasePath)
-            //         ) *>
-            //         Server
-            //             .install(completeClipperzBackend)
-            //             .flatMap(port =>
-            //                 println("SERVER STARTED")
-            //                     ZIO.logInfo(s"Server started on port ${port}")
-            //                 *>  ZIO.never
-            //             )
-            //             .provide(
-            //                 PRNG.live,
-            //                 SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
-            //                 TollManager.live,
-            //                 UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
-            //                 BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
-            //                 OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
-            //                 SrpManager.v6a(),
+                    ( 
+                        Files.createDirectories(blobBasePath) <*>
+                        Files.createDirectories(userBasePath) <*>
+                        Files.createDirectories(oneTimeShareBasePath)
+                    ) *>
+                    Server
+                        .install(completeClipperzBackend)
+                        .flatMap(port =>
+                            println("SERVER STARTED")
+                                ZIO.logInfo(s"Server started on port ${port}")
+                            *>  ZIO.never
+                        )
+                        .provide(
+                            PRNG.live,
+                            SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
+                            TollManager.live,
+                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
+                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
+                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
+                            SrpManager.v6a(),
                                                         
-            //                 OtelSdk.custom(sourceName),
-            //                 OpenTelemetry.metrics(instrumentationScopeName),
-            //                 OpenTelemetry.logging(instrumentationScopeName),
-            //                 OpenTelemetry.tracing(instrumentationScopeName),
-            //                 OpenTelemetry.zioMetrics,
-            //                 OpenTelemetry.contextZIO,
-            //                 PropagatorProvider.live(),
-            //                 zio.metrics.jvm.DefaultJvmMetrics.live.unit
+                            OtelSdk.custom(sourceName),
+                            OpenTelemetry.metrics(instrumentationScopeName),
+                            OpenTelemetry.logging(instrumentationScopeName),
+                            OpenTelemetry.tracing(instrumentationScopeName),
+                            OpenTelemetry.zioMetrics,
+                            OpenTelemetry.contextZIO,
+                            PropagatorProvider.live(),
+                            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit,
 
-            //                 ZLayer.succeed(config),
-            //                 ZLayer.succeed(nettyConfig),
-            //                 Server.customized
-            //             ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
-            //     else ZIO.logFatal("Not enough arguments")
-            // }
+                            ZLayer.succeed(config),
+                            ZLayer.succeed(nettyConfig),
+                            Server.customized
+                        ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
+                else ZIO.logFatal("Not enough arguments")
+            }
             case "db" => {
                 if args.length == 3
                 then

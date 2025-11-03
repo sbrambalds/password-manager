@@ -18,12 +18,13 @@ import io.opentelemetry.semconv.ResourceAttributes
 
 object TracerProvider:
 
-    val signozEndpoint =  "https://localhost:4317"
+    val signozEndpoint =  "https://ingest.eu.signoz.cloud:443"
+    val apiKey = "7f1530b6-72f9-4554-aa60-a729bf9bdf4a"
 
     def default(resourceName: String): RIO[Scope, SdkTracerProvider] =
         for {
             spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcSpanExporter.builder().build()))
-            spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
+            spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(BatchSpanProcessor.builder(spanExporter).build()))
             tracerProvider <-
                 ZIO.fromAutoCloseable(
                     ZIO.succeed(
@@ -41,6 +42,7 @@ object TracerProvider:
             spanExporter <- ZIO.attempt:
                 OtlpGrpcSpanExporter.builder()
                     .setEndpoint(signozEndpoint)
+                    .addHeader("signoz-api-key", apiKey)
                     .build()
             spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
             tracerProvider <-

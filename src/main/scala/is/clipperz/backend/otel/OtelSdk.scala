@@ -13,8 +13,7 @@ object OtelSdk:
                 tracerProvider <- TracerProvider.default(resourceName)
                 meterProvider  <- MeterProvider .otlpGrpc(resourceName)
                 loggerProvider <- LoggerProvider.otlpGrpc(resourceName)
-                openTelemetry  <- ZIO.fromAutoCloseable(
-                                    ZIO.succeed(
+                openTelemetry  <- ZIO.succeed(
                                     OpenTelemetrySdk
                                         .builder()
                                         .setTracerProvider(tracerProvider)
@@ -22,18 +21,15 @@ object OtelSdk:
                                         .setLoggerProvider(loggerProvider)
                                         .build
                                     )
-                                )
             } yield openTelemetry
         )
 
 
     val test: TaskLayer[api.OpenTelemetry] = 
         OpenTelemetry.custom(
-            ZIO.fromAutoCloseable(
-                ZIO.succeed(
-                OpenTelemetrySdk
-                    .builder()
-                    .build
-                )
+            ZIO.succeed(
+            OpenTelemetrySdk
+                .builder()
+                .build
             )
         )

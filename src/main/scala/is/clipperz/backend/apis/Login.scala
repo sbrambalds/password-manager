@@ -3,7 +3,7 @@ package is.clipperz.backend.apis
 import java.util
 
 import is.clipperz.backend.Main.ClipperzHttpApp
-import is.clipperz.backend.LogAspect
+import is.clipperz.backend.otel.LogAspect
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.functions.{ fromStream }
 import is.clipperz.backend.services.{ SessionManager, SrpManager, SRPStep1Data, SRPStep2Data, SRPStep1Response }

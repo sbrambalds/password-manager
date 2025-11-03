@@ -8,7 +8,7 @@ import java.time.format.DateTimeParseException
 // import java.nio.charset.StandardCharsets
 
 import is.clipperz.backend.Main.ClipperzHttpApp
-import is.clipperz.backend.LogAspect
+import is.clipperz.backend.otel.LogAspect
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.fromStream

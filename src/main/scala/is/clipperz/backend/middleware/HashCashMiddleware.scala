@@ -4,7 +4,7 @@ import is.clipperz.backend.data.HexString
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.{ fromString, customMapError }
 import is.clipperz.backend.Main.ClipperzHttpApp
-import is.clipperz.backend.LogAspect
+import is.clipperz.backend.otel.LogAspect
 import is.clipperz.backend.services.{ ChallengeType, SessionManager, TollManager, TollChallenge, PRNG, SessionKey, SrpManager }
 
 import java.util.NoSuchElementException

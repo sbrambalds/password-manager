@@ -1,4 +1,4 @@
-package is.clipperz.backend
+package is.clipperz.backend.otel
 
 import zio.{ Trace, UIO, ZIOAspect, ZIO }
 import zio.http.Request
@@ -7,7 +7,8 @@ object LogAspect:
   def logAnnotateRequestData(req: Request): ZIOAspect[Nothing, Any, Nothing, Any, Nothing, Any] =
     new ZIOAspect[Nothing, Any, Nothing, Any, Nothing, Any]:
       override def apply[R, E, A](zio: ZIO[R, E, A])(implicit trace: Trace): ZIO[R, E, A] =
-        requestData(req).flatMap(data => ZIO.logAnnotate("request", data)(zio))
+        ZIO.logInfo("Handling request") *>
+        requestData(req).flatMap(data => ZIO.logAnnotate("request ", data)(zio))
 
       def requestData(req: Request): UIO[String] =
         ZIO

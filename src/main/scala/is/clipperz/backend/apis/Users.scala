@@ -5,7 +5,7 @@ import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.{ fromStream }
 import is.clipperz.backend.Main.ClipperzHttpApp
 import is.clipperz.backend.middleware.authorizedMiddleware
-import is.clipperz.backend.LogAspect
+import is.clipperz.backend.otel.LogAspect
 import is.clipperz.backend.services.{BlobManager, RequestUserCard, SessionManager, SignupData, UserManager, UserCard, remoteFromRequest}
 
 import zio.{ ZIO, Cause }

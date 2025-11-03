@@ -9,13 +9,20 @@ import io.opentelemetry.semconv.ResourceAttributes
 import zio.*
 import io.opentelemetry.semconv.ServiceAttributes
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
+import io.opentelemetry.sdk.logs.`export`.BatchLogRecordProcessor
 
 object LoggerProvider:
 
   def otlpGrpc(resourceName: String): RIO[Scope, SdkLoggerProvider] =
     for {
       logRecordExporter  <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcLogRecordExporter.builder().build()))
-      logRecordProcessor <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleLogRecordProcessor.create(logRecordExporter)))
+      logRecordProcessor <- ZIO.fromAutoCloseable(
+        ZIO.succeed(
+          BatchLogRecordProcessor
+          .builder(logRecordExporter)
+          .build()
+        )
+      )
       loggerProvider     <-
         ZIO.fromAutoCloseable(
           ZIO.succeed(

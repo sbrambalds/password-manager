@@ -4,7 +4,7 @@ import is.clipperz.backend.data.HexString
 import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.{ fromStream }
-import is.clipperz.backend.LogAspect
+import is.clipperz.backend.otel.LogAspect
 import is.clipperz.backend.services.{ BlobManager }
 
 import zio.{ ZIO, Cause, Chunk }
@@ -51,7 +51,7 @@ val blobsApi: Routes[BlobManager & Tracing & PropagatorProvider, Throwable] = Ro
                         ZIO.fail(new BadRequestException(s"Missing either/both 'blob', 'identifier' fields"))
                 })
             )
-            .map(result => Response.ok)
+            .map(result => Response.json("""{"status":"ok"}"""))
             @@ LogAspect.logAnnotateRequestData(request)
             @@ EndpointTracer()
 ,

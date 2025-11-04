@@ -7,6 +7,9 @@ import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpMana
 import is.clipperz.backend.services.ChallengeType
 import is.clipperz.backend.otel.*
 
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.regions.Region
+
 import zio.nio.file.{ Files, FileSystem }
 
 import scala.util.Try
@@ -29,6 +32,12 @@ import zio.telemetry.opentelemetry.OpenTelemetry
 import is.clipperz.backend.otel.OtelSdk
 import zio.telemetry.opentelemetry.tracing.Tracing
 import is.clipperz.backend.middleware.trace
+import java.net.URI
+import zio.s3.*
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import zio.s3.S3
+import zio.s3.S3Settings
+import zio.s3.S3Region
 
 object Main extends zio.ZIOAppDefault:
     override val bootstrap =
@@ -173,6 +182,58 @@ object Main extends zio.ZIOAppDefault:
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
-            case _ => ZIO.logFatal("Not enough arguments")
+            case "s3" => {
+                val port = args(1).toInt
+
+                val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
+
+                val config        = Server.Config.default
+                                        .responseCompression(Server.Config.ResponseCompressionConfig.default)
+                                        .port(port)
+                                        .enableRequestStreaming
+                val nettyConfig   = NettyConfig.default
+                                        .leakDetection(LeakDetectionLevel.PARANOID)
+                                        .maxThreads(nThreads)
+ 
+                val s3 = zio.s3
+                            .live(
+                                Region.EU_CENTRAL_1,
+                                AwsBasicCredentials.create("TESTKEY", "TESTSECRET"),
+                                Some(URI.create("http://127.0.0.1:9000")),
+                                forcePathStyle = Some(true)
+                            )
+
+                Server
+                    .install(completeClipperzBackend)
+                    .flatMap(port =>
+                        println("SERVER STARTED")
+                            ZIO.logInfo(s"Server started on port ${port}")
+                        *>  ZIO.never
+                    )
+                    .provide(
+                        PRNG.live,
+                        SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
+                        TollManager.live,
+                        s3,
+                        UserManager.minIO(s3, keyValueStorageFolderDepth),
+                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
+                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
+                        SrpManager.v6a(),
+                                                    
+                        OtelSdk.custom(sourceName),
+                        OpenTelemetry.metrics(instrumentationScopeName),
+                        OpenTelemetry.logging(instrumentationScopeName),
+                        OpenTelemetry.tracing(instrumentationScopeName),
+                        OpenTelemetry.zioMetrics,
+                        OpenTelemetry.contextZIO,
+                        PropagatorProvider.live(),
+                        zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit,
+
+                        ZLayer.succeed(config),
+                        ZLayer.succeed(nettyConfig),
+                        Server.customized
+                    ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
+            }
+            case _ => ZIO.logFatal("Error during running")
         }
     })

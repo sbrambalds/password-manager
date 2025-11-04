@@ -19,6 +19,10 @@ import is.clipperz.backend.sqlite.UserRepo
 import is.clipperz.backend.sqlite.UserDb
 import com.augustnagro.magnum.magzio.sql
 import zio.telemetry.opentelemetry.tracing.Tracing
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import zio.s3.S3
+import zio.s3.Live
+import software.amazon.awssdk.services.s3.model.S3Exception
 
 // ============================================================================
 
@@ -132,4 +136,14 @@ object UserManager:
             KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
                 .map(KeyValueUserManager(_))
                 .provideLayer(transactor)
+        )
+
+    def minIO(
+        s3: ZLayer[Any, S3Exception, S3],
+        levels: Int
+    ): ZLayer[S3, Throwable, UserManager] =
+                ZLayer.scoped(
+            KeyValueStorage.MinIOKeyValueStorage("users", levels)
+            .map(new KeyValueUserManager(_))
+            .provideLayer(s3)
         )

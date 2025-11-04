@@ -33,6 +33,13 @@ import com.zaxxer.hikari.metrics.MetricsTracker
 import is.clipperz.backend.Main.validateEnv
 import zio.telemetry.opentelemetry.tracing.Tracing
 import is.clipperz.backend.otel.PropagatorProvider
+import zio.s3.S3Bucket
+import zio.s3.Live
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import zio.s3.S3
+import software.amazon.awssdk.services.s3.model.S3Exception
+import zio.stm.ZSTM
+import software.amazon.awssdk.utils.Md5Utils
 
 // ============================================================================
 
@@ -169,6 +176,48 @@ object KeyValueStorage:
                 case (false, _,     false) => ZIO.fail(new ResourceNotFoundException(s"Referenced blob does not exists"))
                 case (false, _,     true ) => Files.createDirectories(path) *> ZIO.succeed(path)
             })
+    case class MinIOKeyValueStorage private (bucketName: String, levels: Int, s3: S3) extends KeyValueStorage:
+
+        override def getBlob (key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] = 
+            s3.getObject(bucketName, computeDataPath(key, ContentType.Blob))
+                .runCollect
+                .map(chunk => (ZStream.fromChunk(chunk), chunk.size.toLong))
+                .catchSome:
+                    case ex: S3Exception => ZIO.fail(new ResourceNotFoundException("Resource not found"))
+            @@ MethodTracer("getBlobContent")
+
+        override def getMetadata(key: Key): ZIO[Tracing, Throwable, ZStream[Any, S3Exception, Byte]] = 
+            s3.getObject(bucketName, computeDataPath(key, ContentType.Metadata))
+                .runCollect
+                .map(ZStream.fromChunk)
+            @@ MethodTracer("getBlobMetadata")    
+
+        private def saveData (key: Key, content: ZStream[Any, Throwable, Byte], contentType: ContentType): ZIO[Tracing, Throwable, Unit] =
+            (for {
+                contentData     <-  content.runCollect.map(_.toArray)
+                _               <-  s3.putObject(
+                                        bucketName, 
+                                        computeDataPath(key, contentType),
+                                        contentData.length.toLong,
+                                        content,
+                                        contentMD5 = Some(Md5Utils.md5AsBase64(contentData))
+                                    )
+            } yield()) 
+
+        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, content, ContentType.Blob) @@ MethodTracer("saveBlob")
+
+        override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
+            saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata)
+             @@ MethodTracer("saveBlobWithMetadata")
+
+        override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob)) @@ MethodTracer("deleteBlob")
+
+        private def computeDataPath (key: Key, contentType: ContentType): String =
+            val piecesLength: Int = key.length / levels
+            val pieces: IndexedSeq[String] =
+                for (i <- 0 to levels - 1)
+                yield key.substring(i * piecesLength, i * piecesLength + piecesLength).nn
+            pathForContentType(key, Path(pieces.mkString("/")), contentType).toString
 
     object FileSystemKeyValueStorage:
         def apply (
@@ -196,3 +245,22 @@ object KeyValueStorage:
                 transactor <- ZIO.service[Transactor]
                 _ <- repo.createTable(transactor)
             } yield(new SqlLiteKeyValueStorage[T](repo, transactor, factory))
+
+    object MinIOKeyValueStorage:
+        def apply(
+            bucketName: String,
+            levels: Int
+        ): ZIO[S3, Throwable, MinIOKeyValueStorage] = 
+            for {
+                s3 <- ZIO.service[S3]
+                exists <- s3.isBucketExists(bucketName)
+                _ <- ZIO.when(!exists)(
+                    for {
+                        // objects <- s3.listAllObjects(bucketName).runCollect
+                        // _ <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
+                        // _ <- s3.deleteBucket(bucketName)
+                        _ <- s3.createBucket(bucketName)
+                    } yield ()
+                )
+
+            } yield new MinIOKeyValueStorage(bucketName, levels, s3)

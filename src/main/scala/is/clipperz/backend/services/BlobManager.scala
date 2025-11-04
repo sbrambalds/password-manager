@@ -20,6 +20,10 @@ import com.augustnagro.magnum.magzio.Transactor
 import com.augustnagro.magnum.Repo
 import is.clipperz.backend.functions.Key
 import zio.telemetry.opentelemetry.tracing.Tracing
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import zio.s3.Live
+import zio.s3.S3
+import software.amazon.awssdk.services.s3.model.S3Exception
 
 // ----------------------------------------------------------------------------
 
@@ -123,7 +127,8 @@ object BlobManager:
         )
 
     def sqlLite(
-        basePath: Path, transactor: ZLayer[Any, Nothing, Transactor]
+        basePath: Path, 
+        transactor: ZLayer[Any, Nothing, Transactor]
     ): ZLayer[Any, Throwable, BlobManager] = 
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
@@ -131,4 +136,17 @@ object BlobManager:
             KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
                 .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(transactor)
+        )
+
+    def minIO (
+        basePath: Path,
+        s3: ZLayer[Any, S3Exception, S3],
+        levels: Int,
+    ): ZLayer[S3, Throwable, BlobManager] =
+        val baseTmpPath: Path = basePath / "tmp"
+        ZLayer.scoped(
+            (initializeBlobArchive(baseTmpPath) *>
+            KeyValueStorage.MinIOKeyValueStorage("blob", levels)
+            .map(KeyValueBlobManager(_, baseTmpPath))
+            ).provideLayer(s3)
         )

@@ -3,11 +3,15 @@ import Util.*
 addCommandAlias(
   "buildAll", 
   "installPurescript; buildPurescript; compile"
-  )
+)
 addCommandAlias(
   "runAllFileSystem", 
   "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\""
-  )
+)
+addCommandAlias(
+  "runAllS3", 
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"s3\" \"8090\""
+)
 addCommandAlias(
   "runAllDb", 
   "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\""
@@ -32,6 +36,7 @@ addCommandAlias("t", "testAll")
 addCommandAlias("r", "runAllFileSystem")
 addCommandAlias("rfs", "runAllFileSystem")
 addCommandAlias("rdb", "runAllDb")
+addCommandAlias("rS3", "runAllS3")
 
 addCommandAlias(
   "styleCheck",

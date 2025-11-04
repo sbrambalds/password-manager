@@ -27,6 +27,10 @@ import com.augustnagro.magnum.Repo
 import is.clipperz.backend.sqlite.OneTimeShareDb
 import is.clipperz.backend.sqlite.OneTimeShareRepo
 import zio.telemetry.opentelemetry.tracing.Tracing
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import zio.s3.S3
+import zio.s3.Live
+import software.amazon.awssdk.services.s3.model.S3Exception
 
 // ----------------------------------------------------------------------------
 
@@ -108,4 +112,14 @@ object OneTimeShareManager:
             KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
                 .map(KeyValueOneTimeShareManager(_))
                 .provideLayer(transactor)
+        )
+
+    def minIO(
+        s3: ZLayer[Any, S3Exception, S3],
+        levels: Int
+    ): ZLayer[S3, Throwable, OneTimeShareManager] =
+                ZLayer.scoped(
+            KeyValueStorage.MinIOKeyValueStorage("one-time-share", levels)
+            .map(new KeyValueOneTimeShareManager(_))
+            .provideLayer(s3)
         )

@@ -1,4 +1,4 @@
-import Util.*
+import Util.styled
 
 addCommandAlias(
   "buildAll", 
@@ -13,17 +13,21 @@ addCommandAlias(
   "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"s3\" \"8090\""
 )
 addCommandAlias(
-  "runAllDb", 
-  "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\""
+  "runAllFileSystem",
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\"",
 )
 addCommandAlias(
-  "cleanAll", 
-  "clean; cleanDependenciesPurescript"
-  )
+  "runAllDb",
+  "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\"",
+)
 addCommandAlias(
-  "cleanArchive", 
-  "cleanTargetSubdir archive"
-  )
+  "cleanAll",
+  "clean; cleanDependenciesPurescript",
+)
+addCommandAlias(
+  "cleanArchive",
+  "cleanTargetSubdir archive",
+)
 addCommandAlias(
   "testPurescript",
   "installPurescript; buildPurescript; runTestPurescript",

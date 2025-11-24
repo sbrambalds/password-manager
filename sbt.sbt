@@ -1,4 +1,4 @@
-import Util._
+import Util.{ prompt, projectName, styled }
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 

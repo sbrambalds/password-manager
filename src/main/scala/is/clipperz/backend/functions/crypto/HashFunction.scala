@@ -8,11 +8,13 @@ type HashFunction = ZStream[Any, Throwable, Byte] => Task[Array[Byte]]
 
 object HashFunction:
   val hashSHA256: HashFunction = (bytes: ZStream[Any, Throwable, Byte]) =>
+    val digester: MessageDigest = MessageDigest.getInstance("SHA-256").nn
     bytes
-      .run(ZSink.digest(MessageDigest.getInstance("SHA-256").nn))
+      .run(ZSink.digest(digester))
       .map((chunk: Chunk[Byte]) => chunk.toArray)
 
   val hashSHA1: HashFunction = (bytes: ZStream[Any, Throwable, Byte]) =>
+    val digester: MessageDigest = MessageDigest.getInstance("SHA-1").nn
     bytes
-      .run(ZSink.digest(MessageDigest.getInstance("SHA-1").nn))
+      .run(ZSink.digest(digester))
       .map((chunk: Chunk[Byte]) => chunk.toArray)

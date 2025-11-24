@@ -1,0 +1,282 @@
+package:
+  dependencies:
+    - aff
+    - affjax
+    - affjax-web
+    - argonaut-codecs
+    - argonaut-core
+    - arraybuffer
+    - arraybuffer-builder
+    - arraybuffer-types
+    - arrays
+    - b64
+    - bifunctors
+    - bigints
+    - codec
+    - codec-argonaut
+    - concur-core
+    - concur-react
+    - concur-signals
+    - console
+    - control
+    - datetime
+    - decimals
+    - effect
+    - either
+    - enums
+    - exceptions
+    - foldable-traversable
+    - foreign
+    - foreign-object
+    - formatters
+    - fortuna
+    - functions
+    - http-methods
+    - identity
+    - integers
+    - js-promise-aff
+    - js-uri
+    - lcg
+    - lists
+    - markdown-it
+    - maybe
+    - media-types
+    - newtype
+    - now
+    - numbers
+    - ordered-collections
+    - prelude
+    - profunctor
+    - profunctor-lenses
+    - quickcheck
+    - react
+    - record
+    - spec
+    - spec-node
+    - strings
+    - subtlecrypto
+    - tailrec
+    - transformers
+    - tuples
+    - unfoldable
+    - unsafe-coerce
+    - variant
+    - web-clipboard
+    - web-dom
+    - web-file
+    - web-html
+    - web-storage
+    - web-xhr
+    - webauthn
+  name: password-generator
+workspace:
+  packageSet:
+    registry: 66.8.0
+  buildOpts:
+    output: "./target/output.purescript"
+  extraPackages:
+    arraybuffer:
+      dependencies:
+        - arraybuffer-types
+        - arrays
+        - effect
+        - float32
+        - functions
+        - gen
+        - maybe
+        - nullable
+        - prelude
+        - tailrec
+        - uint
+        - unfoldable
+      git: https://github.com/clipperz/purescript-arraybuffer
+      ref: clipperz
+    bigints:
+      dependencies:
+        - arrays
+        - assert
+        - console
+        - effect
+        - foldable-traversable
+        - integers
+        - maybe
+        - numbers
+        - partial
+        - prelude
+        - psci-support
+        - quickcheck
+        - quickcheck-laws
+        - strings
+      git: https://github.com/clipperz/purescript-bigints.git
+      ref: clipperz
+    concur-core:
+      dependencies:
+        - aff
+        - aff-bus
+        - arrays
+        - avar
+        - console
+        - control
+        - datetime
+        - effect
+        - either
+        - exceptions
+        - foldable-traversable
+        - free
+        - identity
+        - lazy
+        - maybe
+        - newtype
+        - parallel
+        - prelude
+        - profunctor-lenses
+        - tailrec
+        - transformers
+        - tuples
+        - unsafe-reference
+      git: https://github.com/purescript-concur/purescript-concur-core
+      ref: main
+    concur-react:
+      dependencies:
+        - aff
+        - arrays
+        - avar
+        - concur-core
+        - console
+        - foldable-traversable
+        - free
+        - nonempty
+        - profunctor-lenses
+        - react
+        - react-dom
+        - tailrec
+        - web-dom
+        - web-html
+      git: https://github.com/purescript-concur/purescript-concur-react
+      ref: main
+    concur-signals:
+      dependencies:
+        - free
+        - lazy
+        - react
+      git: https://github.com/purescript-concur/purescript-concur-signals
+      ref: main
+    float32:
+      dependencies:
+        - console
+        - effect
+        - gen
+        - maybe
+        - prelude
+        - psci-support
+        - quickcheck
+        - quickcheck-laws
+      git: https://github.com/clipperz/purescript-float32
+      ref: clipperz
+    formless:
+      dependencies:
+        - aff
+        - control
+        - datetime
+        - effect
+        - either
+        - heterogeneous
+        - lists
+        - maybe
+        - newtype
+        - ordered-collections
+        - prelude
+        - profunctor-lenses
+        - record
+        - tuples
+        - unsafe-coerce
+        - variant
+      git: https://github.com/clipperz/purescript-formless-independent
+      ref: clipperz
+    fortuna:
+      dependencies:
+        - arraybuffer-types
+        - console
+        - foldable-traversable
+        - monad-control
+        - psci-support
+        - strings
+        - test-unit
+      git: https://github.com/clipperz/purescript-fortuna
+      ref: clipperz
+    markdown-it:
+      dependencies:
+        - effect
+        - foldable-traversable
+        - foreign
+        - jest
+        - node-process
+        - options
+        - prelude
+        - psci-support
+        - tuples
+      git: https://github.com/nonbili/purescript-markdown-it
+      ref: master
+    promises:
+      dependencies:
+        - arrays
+        - console
+        - datetime
+        - effect
+        - either
+        - exceptions
+        - foldable-traversable
+        - functions
+        - maybe
+        - prelude
+        - psci-support
+        - transformers
+        - unfoldable
+      git: https://github.com/clipperz/purescript-promises
+      ref: clipperz
+    subtlecrypto:
+      dependencies:
+        - aff
+        - arraybuffer-types
+        - console
+        - effect
+        - either
+        - exceptions
+        - foreign
+        - functions
+        - maybe
+        - prelude
+        - promises
+        - psci-support
+        - tuples
+        - unsafe-coerce
+      git: https://github.com/clipperz/purescript-subtlecrypto
+      ref: clipperz
+    uint:
+      dependencies:
+        - enums
+        - gen
+        - maybe
+        - numbers
+        - prelude
+      git: https://github.com/clipperz/purescript-uint
+      ref: clipperz
+    webauthn:
+      dependencies:
+        - aff
+        - argonaut-core
+        - arraybuffer-types
+        - arrays
+        - codec
+        - codec-argonaut
+        - effect
+        - either
+        - foreign-object
+        - maybe
+        - prelude
+        - transformers
+        - tuples
+        - unsafe-coerce
+        - web-promise
+      git: https://github.com/clipperz/purescript-webauthn
+      ref: clipperz

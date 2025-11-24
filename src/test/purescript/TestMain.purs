@@ -15,12 +15,12 @@ import Test.HexString (hexSpec)
 import Test.Import (importSpec)
 import Test.SRP (srpSpec)
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec)
+import Test.Spec.Runner.Node (runSpecAndExitProcess)
 import Test.Utilities (utilitiesSpec)
 
 main :: Effect Unit
 main = launchAff_ $ do
-  _ <- runSpec [consoleReporter] do
+  _ <- liftEffect $ runSpecAndExitProcess [consoleReporter] do
     utilitiesSpec
     srpSpec
     encodeDecodeSpec

@@ -1,7 +1,8 @@
 {
     "license": "AGPL-3.0-or-later",
     "scripts": {
-        "build": "spago --jobs 10 build --purs-args '--codegen js,sourcemaps -o ./target/output.purescript'",
+        "build": "spago build",
+        "migrate": "spago build --migrate",
         "clean-purescript": "rm -rf target/output.purescript",
         "clean-spago": "rm -rf .spago",
         "clean-node": "rm -rf node_modules",
@@ -10,7 +11,6 @@
         "nuke": "npm run clean-node; npm run clean-spago; npm run clean-purescript; npm run clean-webpack",
         "docs": "spago docs --open",
         "package": "webpack build --config ./webpack.config.js",
-        "keep-building": "spago --jobs 10 build --watch --purs-args '--codegen js,sourcemaps -o ./target/output.purescript'",
         "keep-packaging": "webpack watch --config ./webpack.config.js --stats verbose",
         "rebuild": "clear; npm run clean; npm run build",
         "checksum": "webpack build --config ./webpack.config.js --env production 1>/dev/null && cat ./target/output.webpack/index.html | openssl sha1",
@@ -27,7 +27,7 @@
         "purescript": "0.15.15",
         "sass": "^1.49.0",
         "sass-loader": "^13.2.2",
-        "spago": "0.21.0",
+        "spago": "^0.93.44",
         "style-loader": "^3.3.2",
         "webpack": "^5.77.0",
         "webpack-cli": "^5.0.1",

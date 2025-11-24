@@ -1,8 +1,6 @@
 package is.clipperz.backend.apis
 
 import java.io.File
-// import java.nio.charset.StandardCharsets
-// import java.nio.file.{ Files, Paths, FileSystems }
 import java.security.MessageDigest
 import scala.language.postfixOps
 import zio.{ Chunk, ZIO, Task }
@@ -18,8 +16,6 @@ import is.clipperz.backend.Main
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.data.HexString.bytesToHex
 import is.clipperz.backend.functions.crypto.HashFunction
-// import java.nio.file.Path
-// import is.clipperz.backend.functions.FileSystem
 import is.clipperz.backend.services.PRNG
 import is.clipperz.backend.services.SessionManager
 import is.clipperz.backend.services.UserManager
@@ -47,29 +43,46 @@ import is.clipperz.backend.functions.customErrorHandler
 import is.clipperz.backend.services.SRPVersion
 import is.clipperz.backend.services.MasterKeyEncodingVersion
 import is.clipperz.backend.TestUtilities
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
+import is.clipperz.backend.otel.PropagatorProvider
+import zio.http.Server.RequestStreaming
+import zio.telemetry.opentelemetry.tracing.Tracing
 
-object LoginSpec extends ZIOSpec[UserManager & BlobManager]:
+object LoginSpec extends ZIOSpec[Tracing & UserManager & BlobManager]:
     val keyBlobManagerFolderDepth = 16
 
-    override def bootstrap: ZLayer[Any, Any, UserManager & BlobManager] =
-        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
-        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false)
+    override def bootstrap = //: ZLayer[Any, Any, Tracing & UserManager & BlobManager] =
+        bootstrapEnvironment
+
+    val bootstrapEnvironment = 
+        // (OtelSdk.custom("Test") ++
+        // OpenTelemetry.contextZIO ++
+        tracing ++
+        userManager ++
+        blobManager
 
     val app =   loginApi
                 .handleErrorCauseZIO(customErrorHandler)
                 // .toHttpApp
     val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
     val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
-    val oneTimeShareBasePath    = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
 
-    val environment =
-        PRNG.live ++
-        (PRNG.live >>> SessionManager.live()) ++
-        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
-        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
-        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
-        ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
-        (PRNG.live >>> TollManager.live)
+    val prng = PRNG.live;
+    val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
+    val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
+    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+
+    val environment : ZIO[Any, Throwable, is.clipperz.backend.services.SrpManager &
+      zio.telemetry.opentelemetry.tracing.Tracing &
+      is.clipperz.backend.otel.PropagatorProvider & (zio.Scope &
+      is.clipperz.backend.services.SessionManager & (
+      is.clipperz.backend.services.UserManager &
+      is.clipperz.backend.services.BlobManager))] =
+        ((userManager ++ prng) >>> SrpManager.v6a()) ++
+        tracing ++
+        PropagatorProvider.live() ++
+        (prng >>> SessionManager.live()) ++ userManager
 
     val c = HexString("7815018e9d84b5b0f319c87dee46c8876e85806823500e03e72c5d66e5d40456")
     val p = HexString("597ed0c523f50c6db089a92845693a3f2454590026d71d6a9028a69967d33f6d")
@@ -88,7 +101,7 @@ object LoginSpec extends ZIOSpec[UserManager & BlobManager]:
 
     val identifier = HexString("abba")
 
-    val saveUser: ZIO[UserManager & BlobManager, Throwable, Unit] =
+    val saveUser: ZIO[Tracing & UserManager & BlobManager, Nothing, Unit] =
         ZIO
         .service[UserManager]
         .zip(ZIO.service[BlobManager])
@@ -105,7 +118,7 @@ object LoginSpec extends ZIOSpec[UserManager & BlobManager]:
 
     val sessionKey = "sessionKey"
 
-    def loginRequestStep1 (c: String, stepData: String, withSession: Boolean): Task[Request] =
+    def loginRequestStep1 (c: String, stepData: String, withSession: Boolean): ZIO[Any, Nothing, Request] =
         Charset.Standard.utf8.encodeString(stepData)
         .map(body =>
             Request(
@@ -118,7 +131,7 @@ object LoginSpec extends ZIOSpec[UserManager & BlobManager]:
             )
         )
 
-    def loginRequestStep2 (c: String, stepData: String, withSession: Boolean): Task[Request] =
+    def loginRequestStep2 (c: String, stepData: String, withSession: Boolean): ZIO[Any, Nothing, Request] =
         Charset.Standard.utf8.encodeString(stepData)
         .map(body =>
             Request(

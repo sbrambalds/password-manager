@@ -27,6 +27,9 @@ import zio.http.*
 import is.clipperz.backend.services.RemoteUserCard
 import is.clipperz.backend.services.SRPVersion
 import is.clipperz.backend.services.MasterKeyEncodingVersion
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
+import is.clipperz.backend.otel.PropagatorProvider
 
 object SrpManangerSpec extends ZIOSpecDefault:
   val samples = 10
@@ -39,6 +42,10 @@ object SrpManangerSpec extends ZIOSpecDefault:
 
   val layers =
     archive ++
+      OtelSdk.custom("Test") ++
+      OpenTelemetry.contextZIO ++
+      ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("SrpManangerSpec")) ++
+      PropagatorProvider.live() ++
       PRNG.live ++
       (PRNG.live >>> SessionManager.live()) ++
       ((archive ++ PRNG.live) >>> SrpManager.v6a())

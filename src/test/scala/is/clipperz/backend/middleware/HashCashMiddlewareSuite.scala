@@ -26,6 +26,8 @@ import is.clipperz.backend.services.TollChallenge
 import is.clipperz.backend.services.TollReceipt
 import java.net.InetAddress
 import is.clipperz.backend.services.ChallengeType
+import zio.telemetry.opentelemetry.tracing.Tracing
+import is.clipperz.backend.otel.PropagatorProvider
 
 object HashCashMiddlewareSpec extends ZIOSpecDefault:
   val layers =
@@ -62,7 +64,7 @@ object HashCashMiddlewareSpec extends ZIOSpecDefault:
     remoteAddress = Some(InetAddress.getLocalHost().nn)
   )
 
-  val idApp: Routes[TollManager & SessionManager, Nothing] = Routes(Method.ANY / "api" / "blobs" / string("c") -> Handler.ok) @@ hashcash(ChallengeType.MESSAGE, ChallengeType.MESSAGE)
+  val idApp: Routes[TollManager & SessionManager & (Tracing & PropagatorProvider), Nothing] = Routes(Method.ANY / "api" / "blobs" / string("c") -> Handler.ok) @@ hashcash(ChallengeType.MESSAGE, ChallengeType.MESSAGE)
   
   def spec = suite("HashCashMiddleware")(
     test("400 if no session is active") {

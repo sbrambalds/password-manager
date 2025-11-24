@@ -55,6 +55,9 @@ import is.clipperz.backend.services.SRPVersion
 import com.augustnagro.magnum.magzio.Transactor
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
+import is.clipperz.backend.otel.PropagatorProvider
 
 object AppSpec extends ZIOSpecDefault:
     val app = Main.completeClipperzBackend
@@ -65,6 +68,10 @@ object AppSpec extends ZIOSpecDefault:
     val keyBlobManagerFolderDepth = 16
 
     val environment =
+        OtelSdk.custom("Test") ++
+        OpenTelemetry.contextZIO ++
+        ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("AppSpec")) ++
+        PropagatorProvider.live() ++
         PRNG.live ++
         (PRNG.live >>> SessionManager.live()) ++
         UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++

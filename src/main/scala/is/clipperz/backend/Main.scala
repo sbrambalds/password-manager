@@ -140,9 +140,14 @@ object Main extends zio.ZIOAppDefault:
                 if args.length == 3
                 then
                     val port = args(1).toInt
-                    val blobBasePath         = FileSystem.default.getPath(args(2))
-                    val userBasePath         = FileSystem.default.getPath(args(3))
-                    val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
+
+                    val dataSourceConfig = new HikariConfig()
+                    dataSourceConfig.setJdbcUrl("jdbc:sqlite:" + args(2) + "clipperzDb.db")
+                    dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
+                    dataSourceConfig.setMaximumPoolSize(1) 
+                
+                    val dataSource = new HikariDataSource(dataSourceConfig)
+                    val transactor = Transactor.layer(dataSource)
 
                     val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
 
@@ -153,11 +158,10 @@ object Main extends zio.ZIOAppDefault:
                     val nettyConfig   = NettyConfig.default
                                             .leakDetection(LeakDetectionLevel.PARANOID)
                                             .maxThreads(nThreads)
-
                     Server
                         .install(completeClipperzBackend)
                         .flatMap(port =>
-                            println("SERVER STARTED")
+                            ZIO.logInfo("SERVER STARTED") *>
                                 ZIO.logInfo(s"Server started on port ${port}")
                             *>  ZIO.never
                         )
@@ -165,23 +169,22 @@ object Main extends zio.ZIOAppDefault:
                             PRNG.live,
                             SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
                             TollManager.live,
-                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
-                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
-                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
+                            UserManager.sqlLite(transactor),
+                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
+                            OneTimeShareManager.sqlLite(transactor),
                             SrpManager.v6a(),
-                                                        
+
+                            ZLayer.succeed(config),
+                            ZLayer.succeed(nettyConfig),
+                            Server.customized,
                             OtelSdk.custom(sourceName),
                             OpenTelemetry.metrics(instrumentationScopeName),
-                            OpenTelemetry.logging(instrumentationScopeName),
+                            OpenTelemetry.logging(instrumentationScopeName, LogLevel.All),
                             OpenTelemetry.tracing(instrumentationScopeName),
                             OpenTelemetry.zioMetrics,
                             OpenTelemetry.contextZIO,
                             PropagatorProvider.live(),
-                            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit,
-
-                            ZLayer.succeed(config),
-                            ZLayer.succeed(nettyConfig),
-                            Server.customized
+                            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }

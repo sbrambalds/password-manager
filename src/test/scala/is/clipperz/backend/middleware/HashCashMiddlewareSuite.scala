@@ -28,12 +28,21 @@ import java.net.InetAddress
 import is.clipperz.backend.services.ChallengeType
 import zio.telemetry.opentelemetry.tracing.Tracing
 import is.clipperz.backend.otel.PropagatorProvider
+import zio.Scope
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
 
 object HashCashMiddlewareSpec extends ZIOSpecDefault:
+
+  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+
   val layers =
     PRNG.live ++
       (PRNG.live >>> SessionManager.live()) ++
-      (PRNG.live >>> TollManager.live)
+      (PRNG.live >>> TollManager.live) ++
+      tracing ++
+      Scope.default ++
+      PropagatorProvider.live()
 
   val sessionKey = "____sessionKey____"
 

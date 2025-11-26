@@ -42,6 +42,9 @@ import is.clipperz.backend.services.SRPStep2Response
 import is.clipperz.backend.services.OneTimeShareManager
 import is.clipperz.backend.functions.customErrorHandler
 import is.clipperz.backend.TestUtilities
+import is.clipperz.backend.otel.PropagatorProvider
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
 
 object LogoutSpec extends ZIOSpecDefault:
   val app =  ( logoutApi
@@ -53,14 +56,23 @@ object LogoutSpec extends ZIOSpecDefault:
 
   val keyBlobManagerFolderDepth = 16
 
-  val environment =
-    PRNG.live ++
-      (PRNG.live >>> SessionManager.live()) ++
-      UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
-      BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
-      OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
-      ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
-      (PRNG.live >>> TollManager.live)
+  val prng = PRNG.live;
+  val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
+  val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
+  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+
+  val environment : ZLayer[Any, Throwable, is.clipperz.backend.services.SrpManager &
+    zio.telemetry.opentelemetry.tracing.Tracing &
+    is.clipperz.backend.otel.PropagatorProvider & (zio.Scope &
+    is.clipperz.backend.services.SessionManager & (
+    is.clipperz.backend.services.UserManager &
+    is.clipperz.backend.services.BlobManager))] =
+      ((userManager ++ prng) >>> SrpManager.v6a()) ++
+      tracing ++
+      PropagatorProvider.live() ++
+      (Scope.default ++ (prng >>> SessionManager.live()) ++ 
+      (userManager ++
+      blobManager))
 
   val sessionKey = "sessionKey"
 

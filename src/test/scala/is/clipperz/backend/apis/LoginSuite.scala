@@ -55,6 +55,13 @@ object LoginSpec extends ZIOSpec[Tracing & UserManager & BlobManager]:
     override def bootstrap = //: ZLayer[Any, Any, Tracing & UserManager & BlobManager] =
         bootstrapEnvironment
 
+    val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
+    val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
+
+    val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
+    val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
+    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+
     val bootstrapEnvironment = 
         // (OtelSdk.custom("Test") ++
         // OpenTelemetry.contextZIO ++
@@ -65,15 +72,10 @@ object LoginSpec extends ZIOSpec[Tracing & UserManager & BlobManager]:
     val app =   loginApi
                 .handleErrorCauseZIO(customErrorHandler)
                 // .toHttpApp
-    val blobBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
-    val userBasePath            = FileSystem.default.getPath("target", "tests", "Manager", "users")
 
     val prng = PRNG.live;
-    val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
-    val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
-    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
-    val environment : ZIO[Any, Throwable, is.clipperz.backend.services.SrpManager &
+    val environment : ZLayer[Any, Throwable, is.clipperz.backend.services.SrpManager &
       zio.telemetry.opentelemetry.tracing.Tracing &
       is.clipperz.backend.otel.PropagatorProvider & (zio.Scope &
       is.clipperz.backend.services.SessionManager & (
@@ -82,7 +84,8 @@ object LoginSpec extends ZIOSpec[Tracing & UserManager & BlobManager]:
         ((userManager ++ prng) >>> SrpManager.v6a()) ++
         tracing ++
         PropagatorProvider.live() ++
-        (prng >>> SessionManager.live()) ++ userManager
+        (Scope.default ++ (prng >>> SessionManager.live())) ++
+        bootstrapEnvironment
 
     val c = HexString("7815018e9d84b5b0f319c87dee46c8876e85806823500e03e72c5d66e5d40456")
     val p = HexString("597ed0c523f50c6db089a92845693a3f2454590026d71d6a9028a69967d33f6d")

@@ -23,12 +23,15 @@ import zio.test.TestEnvironment
 import zio.ZLayer
 import zio.test.TestConsole
 import is.clipperz.backend.TestUtilities
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
 
 object UserManagerSpec extends ZIOSpecDefault:
   val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
 
   val keyBlobManagerFolderDepth = 16
-  val environment = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false)
+  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val environment = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ tracing 
 
   val c = HexString("abcdef0192837465")
   val testUser = RemoteUserCard(

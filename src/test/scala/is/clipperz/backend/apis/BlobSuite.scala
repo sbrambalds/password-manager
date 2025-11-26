@@ -25,8 +25,118 @@ import is.clipperz.backend.TestUtilities
 import zio.nio.charset.Charset
 
 import zio.schema.codec.JsonCodec.zioJsonBinaryCodec
+import zio.Scope
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
+import is.clipperz.backend.otel.PropagatorProvider
 
 object BlobSpec extends ZIOSpecDefault:
+
+    val app = blobsApi.handleErrorCauseZIO(customErrorHandler)
+    val blobBasePath = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
+    val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
+    val oneTimeShareBasePath = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
+
+    val boundary = "--TestBoundary"
+
+    val keyBlobManagerFolderDepth = 16
+
+    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+
+    val prng = PRNG.live;
+    val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
+    val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
+    
+    val environment : ZLayer[Any, Throwable, is.clipperz.backend.services.SrpManager &
+      zio.telemetry.opentelemetry.tracing.Tracing &
+      is.clipperz.backend.otel.PropagatorProvider & (zio.Scope &
+      is.clipperz.backend.services.SessionManager & (
+      is.clipperz.backend.services.UserManager &
+      is.clipperz.backend.services.BlobManager))] =
+        ((userManager ++ prng) >>> SrpManager.v6a()) ++
+        tracing ++
+        PropagatorProvider.live() ++
+        (Scope.default ++ (prng >>> SessionManager.live()) ++ 
+        (userManager ++
+        blobManager))
+
+    val blob_1K     = "0dfba6266bcebf53a0ed863f5df4edf56066e6a5194df242a2b31f13bf7bb9f8"
+    val blob_2K     = "8960c75f721872b381f4e81ca7219bd268a47019e019264de3418088e4b1fbb0"
+    val blob_3K     = "629c90e7b104b8d7de31bbc3aabd05305451b9684e1d5ab38e49ba7bb63f4396"
+    val blob_4K     = "0d37b6cba13b88d803e866241fcace8b7f1dad25156f8f2383f914f3f54fc51e"
+    val blob_5K     = "31bae7cdae1214f650a92f0731e7af0ed3d8805a0f883ef5031fd2b77c77f6c4"
+    val blob_6K     = "6bb01cc243776c588ee34ee283043db4575ee1cf7fff838a1ead9f3ee8b785f0"
+    val blob_7K     = "5d134b0d55a3efc8434849cbd8136ebf4730f33d6688b7397ef1a14d66c003ef"
+    val blob_8K     = "35a2870c8031ff6eb2357611dde0cdab009105d9627858c7857d8c1d98f52a4c"
+    val blob_9K     = "0c03d7fcf61a5b338f462a39f56f6556a106a68bd488604183c97f09b26724aa"
+
+    val blob_10K    = "90a6bbdfc71693e18e021906479463d5d685fd3661ee00c91d31297968c36331"
+    val blob_100K   = "36ae43f85e706511dbabc8dc38cc0b3fe737f9a5cf7c3d11b6e36889634073a2"
+    val blob_200K   = "35d7eb0d88cbcad1779e592d3b0b59e61ab9818890283b3a1cb9cb32175d6733"
+    val blob_300K   = "9ae5235637f049c02988d4a5cf5a321c7246a8b7bf133eeb69d11095e3bb2aad"
+    val blob_400K   = "eaa8eea0ac6540ab1d021f436599f48a9f69bda37ea2841acd3ba1184dd639b4"
+
+    val blob_1M     = "4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63"
+
+
+    val validBlobHash = HexString("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae")
+    val validBlobData = readSampleBlob("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae").flatMap(_.runCollect)
+    val identifier    = HexString("affa")
+
+    def readSampleBlob (blobHash: String): Task[ZStream[Any, Nothing, Byte]] = Files.readAllBytes(Path(s"src/test/resources/blobs/${blobHash}.blob")).map(ZStream.fromChunk)
+
+    def post (hash: HexString, identifier: HexString, data: Chunk[Byte]) = Request(
+        url = URL(root / "api" / "blobs"),
+        method = Method.POST,
+        body = Body.fromMultipartForm(
+            Form(
+                FormField.binaryField(
+                    name = "blob"
+                ,   data = data
+                ,   filename = Some(hash.toString())
+                ,   mediaType = MediaType.application.`octet-stream`
+                )
+            ,   FormField.binaryField(
+                    name = "identifier"
+                ,   data = Chunk.fromArray(identifier.toByteArray)
+                ,   mediaType = MediaType.application.`octet-stream`),
+            )
+        ,   specificBoundary = Boundary(boundary)
+        ),
+        version = Version.Http_1_1,
+    )
+
+    val postEmptyForm = Request (
+        url = URL(root / "api" / "blobs"),
+        method = Method.POST,
+        body = Body.fromStream(
+            Form.empty.multipartBytes(Boundary(boundary))
+        ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
+        version = Version.Http_1_1,
+    )
+
+    def delete (hash: HexString, identifier: HexString) = Request(
+        url = URL(root / "api" / "blobs" / hash.toString()),
+        method = Method.DELETE,
+        body = Body.fromMultipartForm(
+            Form(FormField.binaryField(
+                name = "identifier"
+            ,   data = Chunk.fromArray(identifier.toByteArray)
+            ,   mediaType = MediaType.application.`octet-stream`
+            ))
+        ,   specificBoundary = Boundary(boundary)
+        ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
+        version = Version.Http_1_1,
+    )
+
+    def get (hash: HexString) = Request(
+        url = URL(root / "api" / "blobs" / hash.toString()),
+        method = Method.GET,
+        headers = Headers.empty,
+        body = Body.empty,
+        version = Version.Http_1_1,
+        remoteAddress = None
+    )
 
     def spec = suite("BlobApis")(
 
@@ -160,100 +270,5 @@ object BlobSpec extends ZIOSpecDefault:
 
     // ========================================================================
 
-    val app = blobsApi.handleErrorCauseZIO(customErrorHandler)
-    val blobBasePath = FileSystem.default.getPath("target", "tests", "Manager", "blobs")
-    val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
-    val oneTimeShareBasePath = FileSystem.default.getPath("target", "tests", "Manager", "one_time_share")
-
-    val boundary = "--TestBoundary"
-
-    val keyBlobManagerFolderDepth = 16
-
-    val environment =
-        ZLayer.succeed(Server.Config.default.requestStreaming(RequestStreaming.Enabled)) ++
-        PRNG.live ++
-        (PRNG.live >>> SessionManager.live()) ++
-        UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++
-        BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
-        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
-        ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
-        (PRNG.live >>> TollManager.live)
-
-    val blob_1K     = "0dfba6266bcebf53a0ed863f5df4edf56066e6a5194df242a2b31f13bf7bb9f8"
-    val blob_2K     = "8960c75f721872b381f4e81ca7219bd268a47019e019264de3418088e4b1fbb0"
-    val blob_3K     = "629c90e7b104b8d7de31bbc3aabd05305451b9684e1d5ab38e49ba7bb63f4396"
-    val blob_4K     = "0d37b6cba13b88d803e866241fcace8b7f1dad25156f8f2383f914f3f54fc51e"
-    val blob_5K     = "31bae7cdae1214f650a92f0731e7af0ed3d8805a0f883ef5031fd2b77c77f6c4"
-    val blob_6K     = "6bb01cc243776c588ee34ee283043db4575ee1cf7fff838a1ead9f3ee8b785f0"
-    val blob_7K     = "5d134b0d55a3efc8434849cbd8136ebf4730f33d6688b7397ef1a14d66c003ef"
-    val blob_8K     = "35a2870c8031ff6eb2357611dde0cdab009105d9627858c7857d8c1d98f52a4c"
-    val blob_9K     = "0c03d7fcf61a5b338f462a39f56f6556a106a68bd488604183c97f09b26724aa"
-
-    val blob_10K    = "90a6bbdfc71693e18e021906479463d5d685fd3661ee00c91d31297968c36331"
-    val blob_100K   = "36ae43f85e706511dbabc8dc38cc0b3fe737f9a5cf7c3d11b6e36889634073a2"
-    val blob_200K   = "35d7eb0d88cbcad1779e592d3b0b59e61ab9818890283b3a1cb9cb32175d6733"
-    val blob_300K   = "9ae5235637f049c02988d4a5cf5a321c7246a8b7bf133eeb69d11095e3bb2aad"
-    val blob_400K   = "eaa8eea0ac6540ab1d021f436599f48a9f69bda37ea2841acd3ba1184dd639b4"
-
-    val blob_1M     = "4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63"
-
-
-    val validBlobHash = HexString("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae")
-    val validBlobData = readSampleBlob("f9032dd04636e22b80db4c87513952154b05df9bc15c6951a5a73d810e1c5cae").flatMap(_.runCollect)
-    val identifier    = HexString("affa")
-
-    def readSampleBlob (blobHash: String): Task[ZStream[Any, Nothing, Byte]] = Files.readAllBytes(Path(s"src/test/resources/blobs/${blobHash}.blob")).map(ZStream.fromChunk)
-
-    def post (hash: HexString, identifier: HexString, data: Chunk[Byte]) = Request(
-        url = URL(root / "api" / "blobs"),
-        method = Method.POST,
-        body = Body.fromMultipartForm(
-            Form(
-                FormField.binaryField(
-                    name = "blob"
-                ,   data = data
-                ,   filename = Some(hash.toString())
-                ,   mediaType = MediaType.application.`octet-stream`
-                )
-            ,   FormField.binaryField(
-                    name = "identifier"
-                ,   data = Chunk.fromArray(identifier.toByteArray)
-                ,   mediaType = MediaType.application.`octet-stream`),
-            )
-        ,   specificBoundary = Boundary(boundary)
-        ),
-        version = Version.Http_1_1,
-    )
-
-    val postEmptyForm = Request (
-        url = URL(root / "api" / "blobs"),
-        method = Method.POST,
-        body = Body.fromStream(
-            Form.empty.multipartBytes(Boundary(boundary))
-        ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
-        version = Version.Http_1_1,
-    )
-
-    def delete (hash: HexString, identifier: HexString) = Request(
-        url = URL(root / "api" / "blobs" / hash.toString()),
-        method = Method.DELETE,
-        body = Body.fromMultipartForm(
-            Form(FormField.binaryField(
-                name = "identifier"
-            ,   data = Chunk.fromArray(identifier.toByteArray)
-            ,   mediaType = MediaType.application.`octet-stream`
-            ))
-        ,   specificBoundary = Boundary(boundary)
-        ).contentType(newMediaType = MediaType.multipart.`form-data`, newBoundary = Boundary(boundary)),
-        version = Version.Http_1_1,
-    )
-
-    def get (hash: HexString) = Request(
-        url = URL(root / "api" / "blobs" / hash.toString()),
-        method = Method.GET,
-        headers = Headers.empty,
-        body = Body.empty,
-        version = Version.Http_1_1,
-        remoteAddress = None
-    )
+    
 

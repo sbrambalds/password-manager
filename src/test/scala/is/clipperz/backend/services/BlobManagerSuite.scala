@@ -21,18 +21,25 @@ import is.clipperz.backend.data.HexString
 import zio.test.TestEnvironment
 import zio.ZLayer
 import is.clipperz.backend.TestUtilities
+import zio.Scope
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
 
 object BlobManagerSpec extends ZIOSpecDefault:
   val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
 
   val keyBlobManagerFolderDepth = 16
-  val environment = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false)
+  val blobManagerLayer = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false)
 
   val testContent = ZStream.fromIterable("testContent".getBytes().nn)
   val failingContent = ZStream.never
   val testKey = HexString("d1d733a8041744d6e4b7b991b5f38df48a3767acd674c9df231c92068801a460")
   val failingKey = HexString("d1d733a8041744d6e4b7b991b5f38df48a3767acd674c9df231c92068801a789")
   val identifier = HexString("abba")
+
+  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val environment = Scope.default ++ tracing ++ blobManagerLayer
+
   def spec = suite("BlobManager")(
     test("getBlob - fail") {
       for {

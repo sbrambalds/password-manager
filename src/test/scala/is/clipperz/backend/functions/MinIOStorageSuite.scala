@@ -8,6 +8,7 @@ import zio.test.*
 import zio.test.Assertion.*
 import zio.json.EncoderOps
 import zio.http.*
+import zio.nio.file.Path
 import zio.nio.file.FileSystem
 import is.clipperz.backend.Main
 import _root_.is.clipperz.backend.Exceptions.*
@@ -15,45 +16,48 @@ import zio.Clock
 import zio.test.TestClock
 import zio.Duration
 import is.clipperz.backend.TestUtilities
-import is.clipperz.backend.sqlite.*
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
-import com.augustnagro.magnum.magzio.Transactor
-import com.augustnagro.magnum.magzio.*
-import is.clipperz.backend.otel.OtelSdk
+import is.clipperz.backend.functions.KeyValueStorageSpec.keyValueStorage
+import is.clipperz.backend.otel.PropagatorProvider
+import zio.telemetry.opentelemetry.tracing.Tracing
+import zio.ZLayer
 import zio.telemetry.opentelemetry.OpenTelemetry
+import io.opentelemetry.context.ContextStorage
+import is.clipperz.backend.otel.OtelSdk
+import zio.nio.file.{Path as ZPath}
+import zio.s3.S3
+import zio.nio.file.Files
 
-object SqlLiteStorageSpec extends ZIOSpecDefault:
+object MinIOStorageSpec extends ZIOSpecDefault:
 
-  val config = new HikariConfig()
-  config.setJdbcUrl("jdbc:sqlite:target/ClipperzDb.db")
-  config.setDriverClassName("org.sqlite.JDBC")
-  config.setMaximumPoolSize(5)
-  config.setConnectionTestQuery("SELECT 1")
+  private val root = FileSystem.default.getPath("target", "s3Test")
 
-  val dataSource = new HikariDataSource(config)
-  val transactor = Transactor.layer(dataSource)
+  private val s3: ZLayer[Any, Nothing, S3] = zio.s3.stub(root)
 
   val testContent  = ZStream.fromIterable("testContent".getBytes.nn)
   val testMetadata = ZStream.fromIterable("testMetadata".getBytes.nn)
   val failingContent = ZStream.never
   val testKey = "testKey"
   val failingKey = "failingKey"
-
+  val levels = 16
+  val sourceName = "test"
+  val instrumentationScopeName = "testScope"
   val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
-  val environment = tracing ++ Scope.default
 
-  def storageSuite[T <: DbTable](name: String, repo: Repo[T, T, Key], ctor: (Key, String, Array[Byte]) => T) =
+    val environment =
+        tracing ++
+        PropagatorProvider.live() ++
+        Scope.default
+
+  def storageSuite(name: String, bucketName: String) =
+
+    val keyValueStorage =
+          KeyValueStorage.MinIOKeyValueStorage(bucketName).provideLayer(s3)
+
     suite(s"SqlLiteValueStorage - $name")(
       test("getBlob - fail") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
       },
       test("saveBlob - success") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         for {
           _ <- keyValueStorage.flatMap(_.saveBlobWithMetadata(testKey, testContent, testMetadata, false))
           _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
@@ -62,9 +66,6 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
         } yield assertTrue(result)
       },
       test("saveBlob with failing stream - success") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         for {
           fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
           _     <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
@@ -72,18 +73,12 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
         } yield res
       },
       test("getBlob - success") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         for {
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
           result <- testContent.zip(content).map((a, b) => a == b).toIterator.map(_.map(_.getOrElse(false)).reduce(_ && _))
         } yield assertTrue(result)
       },
       test("deleteBlob - success") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         for {
           _   <- keyValueStorage.flatMap(_.getBlob(testKey))
           _   <- keyValueStorage.flatMap(_.deleteBlob(testKey))
@@ -91,24 +86,21 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
         } yield TestResult.allSuccesses(assertCompletes, res)
       },
       test("deleteBlob - nothing to delete") {
-        val keyValueStorage =
-          KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
         for {
           res <- assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
           _   <- keyValueStorage.flatMap(_.deleteBlob(testKey))
         } yield TestResult.allSuccesses(res, assertCompletes)
       }
-    ).provideLayerShared(environment) @@ TestAspect.sequential 
+    ) @@ TestAspect.sequential 
     @@ TestAspect.beforeAll({
       for { 
-        _ <- TestUtilities.dropTable() 
-              .provideLayer(Transactor.layer(dataSource)) 
+        _ <- TestUtilities.dropBucket(bucketName) 
+              .provideLayer(s3) 
       } yield() 
     })
 
   def spec = suite("All Storages")(
-    storageSuite("UserDb", new UserRepo(), UserDb.apply),
-    storageSuite("BlobDb", new BlobRepo(), BlobDb.apply),
-    storageSuite("OneTimeShareDb", new OneTimeShareRepo(), OneTimeShareDb.apply)
-  )
+    storageSuite("UserDb", "users"),
+    storageSuite("BlobDb", "blobs"),
+    storageSuite("OneTimeShareDb", "one-time-shares")
+  ).provideLayerShared(environment)

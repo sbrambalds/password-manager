@@ -18,6 +18,9 @@ import zio.test.TestClock
 import zio.Duration
 import is.clipperz.backend.TestUtilities
 import zio.test.TestResult.{ allSuccesses }
+import is.clipperz.backend.otel.OtelSdk
+import zio.telemetry.opentelemetry.OpenTelemetry
+import zio.Scope
 
 object KeyValueStorageSpec extends ZIOSpecDefault:
   val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
@@ -27,6 +30,9 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
   val failingContent = ZStream.never
   val testKey = "testKey"
   val failingKey = "failingKey"
+
+  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val environment = tracing ++ Scope.default
 
   def spec = suite("FileSystemValueStorage")(
     test("getBlob - fail") {
@@ -67,7 +73,7 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
             _   <- keyValueStorage.flatMap(_.deleteBlob(testKey))
         } yield allSuccesses(res, assertCompletes)
     }
-  ) @@
+  ).provideLayerShared(environment) @@
     TestAspect.sequential @@
     TestAspect.beforeAll(TestUtilities.deleteFilesInFolder(blobBasePath)) @@
     TestAspect.afterAll (TestUtilities.deleteFilesInFolder(blobBasePath))

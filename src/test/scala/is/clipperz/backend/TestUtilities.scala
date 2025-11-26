@@ -9,6 +9,8 @@ import zio.nio.file.{ Files, Path }
 import zio.stream.ZSink
 import is.clipperz.backend.functions.KeyValueStorage.SqlLiteKeyValueStorage
 import com.augustnagro.magnum.magzio.*
+import zio.s3.S3
+import scala.languageFeature.existentials
 
 object TestUtilities:
     def deleteFilesInFolder (path: Path): ZIO[Any, Nothing, Boolean] =
@@ -36,4 +38,14 @@ object TestUtilities:
                 sql"drop table if exists UserDb;".update.run()
                 sql"drop table if exists OneTimeShareDb;".update.run()
                 sql"drop table if exists BlobDb;".update.run()
+        )
+
+    def dropBucket(bucketName: String): ZIO[S3, Throwable, Unit] =
+        ZIO.service[S3].map(s3 =>
+            for{
+                objects <- s3.listAllObjects(bucketName).runCollect
+                _ <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
+                _ <- s3.deleteBucket(bucketName)
+                _ <- s3.createBucket(bucketName)
+            }yield()
         )

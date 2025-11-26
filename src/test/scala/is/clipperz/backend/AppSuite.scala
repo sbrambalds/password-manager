@@ -58,6 +58,7 @@ import com.zaxxer.hikari.HikariDataSource
 import is.clipperz.backend.otel.OtelSdk
 import zio.telemetry.opentelemetry.OpenTelemetry
 import is.clipperz.backend.otel.PropagatorProvider
+import zio.Scope
 
 object AppSpec extends ZIOSpecDefault:
     val app = Main.completeClipperzBackend
@@ -78,7 +79,8 @@ object AppSpec extends ZIOSpecDefault:
         BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false) ++
         OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyBlobManagerFolderDepth, false) ++
         ((UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ PRNG.live) >>> SrpManager.v6a()) ++
-        (PRNG.live >>> TollManager.live)
+        (PRNG.live >>> TollManager.live) ++
+        Scope.default
 
     val srpFunctions = new SrpFunctionsV6a()
 
@@ -145,27 +147,28 @@ object AppSpec extends ZIOSpecDefault:
     )
 
     private def manageRequestWithTollPayment(request: Task[Request]): ZIO[ClipperzEnvironment, Any, Response] =
-        request.
-        flatMap(req =>
-            app.runZIO(req).flatMap(response =>
-                if response.status.code != 402
-                then
-                    ZIO.succeed(response)
-                else
-                    computeReceiptFromResponse(response)
-                    .zip(ZIO.attempt(response.rawHeader(TollManager.tollHeader).get))
-                    .zip(ZIO.attempt(response.rawHeader(TollManager.tollCostHeader).get))
-                    .flatMap((receipt, tollHeader, tollCostHeader) =>
-                        manageRequestWithTollPayment(
-                            ZIO.succeed(
-                                req.addHeaders(Headers(TollManager.tollReceiptHeader, receipt.toString()))
-                                .addHeaders(Headers(TollManager.tollHeader, tollHeader))
-                                .addHeaders(Headers(TollManager.tollCostHeader, tollCostHeader))
+        (   request.
+            flatMap(req =>
+                app.runZIO(req).flatMap(response =>
+                    if response.status.code != 402
+                    then
+                        ZIO.succeed(response)
+                    else
+                        computeReceiptFromResponse(response)
+                        .zip(ZIO.attempt(response.rawHeader(TollManager.tollHeader).get))
+                        .zip(ZIO.attempt(response.rawHeader(TollManager.tollCostHeader).get))
+                        .flatMap((receipt, tollHeader, tollCostHeader) =>
+                            manageRequestWithTollPayment(
+                                ZIO.succeed(
+                                    req.addHeaders(Headers(TollManager.tollReceiptHeader, receipt.toString()))
+                                    .addHeaders(Headers(TollManager.tollHeader, tollHeader))
+                                    .addHeaders(Headers(TollManager.tollCostHeader, tollCostHeader))
+                                )
                             )
                         )
-                    )
+                )
             )
-        )
+        ).provide(environment)
   
     private def computeReceiptFromResponse(res: Response) =
         val toll = res.rawHeader(TollManager.tollHeader).map(HexString(_)).get

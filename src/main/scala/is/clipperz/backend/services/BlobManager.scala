@@ -146,7 +146,7 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-            KeyValueStorage.MinIOKeyValueStorage("blob", levels)
+            KeyValueStorage.MinIOKeyValueStorage("blob")
             .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(s3)
         )

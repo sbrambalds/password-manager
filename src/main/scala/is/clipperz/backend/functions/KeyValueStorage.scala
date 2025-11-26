@@ -176,14 +176,13 @@ object KeyValueStorage:
                 case (false, _,     false) => ZIO.fail(new ResourceNotFoundException(s"Referenced blob does not exists"))
                 case (false, _,     true ) => Files.createDirectories(path) *> ZIO.succeed(path)
             })
-    case class MinIOKeyValueStorage private (bucketName: String, levels: Int, s3: S3) extends KeyValueStorage:
+    case class MinIOKeyValueStorage private (bucketName: String, s3: S3) extends KeyValueStorage:
 
         override def getBlob (key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] = 
             s3.getObject(bucketName, computeDataPath(key, ContentType.Blob))
                 .runCollect
                 .map(chunk => (ZStream.fromChunk(chunk), chunk.size.toLong))
-                .catchSome:
-                    case ex: S3Exception => ZIO.fail(new ResourceNotFoundException("Resource not found"))
+                .mapError(_ => new ResourceNotFoundException("Resource not found"))
             @@ MethodTracer("getBlobContent")
 
         override def getMetadata(key: Key): ZIO[Tracing, Throwable, ZStream[Any, S3Exception, Byte]] = 
@@ -202,7 +201,12 @@ object KeyValueStorage:
                                         content,
                                         contentMD5 = Some(Md5Utils.md5AsBase64(contentData))
                                     )
-            } yield()) 
+            } yield())
+            .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME))
+            .catchSome:
+                case ex: EmptyContentException => ZIO.fail(ex)
+                case ex: NonReadableArchiveException => ZIO.fail(ex)
+                case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
 
         override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, content, ContentType.Blob) @@ MethodTracer("saveBlob")
 
@@ -212,12 +216,7 @@ object KeyValueStorage:
 
         override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob)) @@ MethodTracer("deleteBlob")
 
-        private def computeDataPath (key: Key, contentType: ContentType): String =
-            val piecesLength: Int = key.length / levels
-            val pieces: IndexedSeq[String] =
-                for (i <- 0 to levels - 1)
-                yield key.substring(i * piecesLength, i * piecesLength + piecesLength).nn
-            pathForContentType(key, Path(pieces.mkString("/")), contentType).toString
+        private def computeDataPath (key: Key, contentType: ContentType): String = pathForContentType(key, Path(""), contentType).toString
 
     object FileSystemKeyValueStorage:
         def apply (
@@ -248,8 +247,7 @@ object KeyValueStorage:
 
     object MinIOKeyValueStorage:
         def apply(
-            bucketName: String,
-            levels: Int
+            bucketName: String
         ): ZIO[S3, Throwable, MinIOKeyValueStorage] = 
             for {
                 s3 <- ZIO.service[S3]
@@ -263,4 +261,4 @@ object KeyValueStorage:
                     } yield ()
                 )
 
-            } yield new MinIOKeyValueStorage(bucketName, levels, s3)
+            } yield new MinIOKeyValueStorage(bucketName, s3)

@@ -143,7 +143,7 @@ object UserManager:
         levels: Int
     ): ZLayer[S3, Throwable, UserManager] =
                 ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage("users", levels)
+            KeyValueStorage.MinIOKeyValueStorage("users")
             .map(new KeyValueUserManager(_))
             .provideLayer(s3)
         )

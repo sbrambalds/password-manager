@@ -147,6 +147,7 @@ lazy val dependencies = Seq(
     "dev.zio" %% "zio-metrics-connectors-datadog" % zio_metrics_version,
     "dev.zio" %% "zio-nio"                        % zio_nio_version,
     "dev.zio" %% "zio-opentelemetry"              % zio_opentelemetry_version,
+    "dev.zio" %% "zio-opentelemetry-zio-logging"  % zio_opentelemetry_version,
     "dev.zio" %% "zio-s3"                         % zio_S3_version,
     
     "com.github.nscala-time"   %% "nscala-time"                 % nscala_time_version,

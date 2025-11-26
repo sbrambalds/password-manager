@@ -80,25 +80,47 @@ object Main extends zio.ZIOAppDefault:
     val keyValueStorageFolderDepth = 16
 
     val run = ZIOAppArgs.getArgs.flatMap ( args => {
+
+        val port      = args.lift(1).flatMap(s => Try(s.toInt).toOption)
+                            .getOrElse(sys.error("Missing or invalid port argument"))
+
+        val nThreads  = args.headOption.flatMap(s => Try(s.toInt).toOption).getOrElse(0)
+
+        // Server config
+        val config = Server.Config.default
+            .responseCompression(Server.Config.ResponseCompressionConfig.default)
+            .port(port)
+            .enableRequestStreaming
+
+        val nettyConfig = NettyConfig.default
+            .leakDetection(LeakDetectionLevel.PARANOID)
+            .maxThreads(nThreads)
+
+        val configLayers =
+            ZLayer.succeed(config) ++
+            ZLayer.succeed(nettyConfig)
+
+        val commonLayers =
+            PropagatorProvider.live() ++
+            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit ++
+            PRNG.live ++
+            OtelSdk.custom(sourceName) ++
+            configLayers ++
+            (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live)) ++
+            (configLayers >>> Server.customized)
+
+        val openTelemetryLayers = OpenTelemetry.metrics(instrumentationScopeName) ++
+            OpenTelemetry.logging(instrumentationScopeName) ++
+            OpenTelemetry.tracing(instrumentationScopeName)
+
+
         args(0) match {
             case "fileSystem" => {
                 if args.length == 5
                 then
-                    val port = args(1).toInt
                     val blobBasePath         = FileSystem.default.getPath(args(2))
                     val userBasePath         = FileSystem.default.getPath(args(3))
                     val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
-
-                    val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
-
-                    val config        = Server.Config.default
-                                            .responseCompression(Server.Config.ResponseCompressionConfig.default)
-                                            .port(port)
-                                            .enableRequestStreaming
-                    val nettyConfig   = NettyConfig.default
-                                            .leakDetection(LeakDetectionLevel.PARANOID)
-                                            .maxThreads(nThreads)
-
 
                     ( 
                         Files.createDirectories(blobBasePath) <*>
@@ -113,33 +135,21 @@ object Main extends zio.ZIOAppDefault:
                             *>  ZIO.never
                         )
                         .provide(
-                            PRNG.live,
-                            SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
-                            TollManager.live,
+                            commonLayers,
+                            commonLayers,
                             UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
                             BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
                             OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
                             SrpManager.v6a(),
-                                                        
-                            OtelSdk.custom(sourceName),
-                            OpenTelemetry.metrics(instrumentationScopeName),
-                            OpenTelemetry.logging(instrumentationScopeName),
-                            OpenTelemetry.tracing(instrumentationScopeName),
+                            openTelemetryLayers,
                             OpenTelemetry.zioMetrics,
-                            OpenTelemetry.contextZIO,
-                            PropagatorProvider.live(),
-                            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit,
-
-                            ZLayer.succeed(config),
-                            ZLayer.succeed(nettyConfig),
-                            Server.customized
+                            OpenTelemetry.contextZIO
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
             case "db" => {
                 if args.length == 3
                 then
-                    val port = args(1).toInt
 
                     val dataSourceConfig = new HikariConfig()
                     dataSourceConfig.setJdbcUrl("jdbc:sqlite:" + args(2) + "clipperzDb.db")
@@ -149,15 +159,6 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
-                    val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
-
-                    val config        = Server.Config.default
-                                            .responseCompression(Server.Config.ResponseCompressionConfig.default)
-                                            .port(port)
-                                            .enableRequestStreaming
-                    val nettyConfig   = NettyConfig.default
-                                            .leakDetection(LeakDetectionLevel.PARANOID)
-                                            .maxThreads(nThreads)
                     Server
                         .install(completeClipperzBackend)
                         .flatMap(port =>
@@ -166,40 +167,19 @@ object Main extends zio.ZIOAppDefault:
                             *>  ZIO.never
                         )
                         .provide(
-                            PRNG.live,
-                            SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
-                            TollManager.live,
+                            commonLayers,
+                            commonLayers,
                             UserManager.sqlLite(transactor),
                             BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
                             OneTimeShareManager.sqlLite(transactor),
                             SrpManager.v6a(),
-
-                            ZLayer.succeed(config),
-                            ZLayer.succeed(nettyConfig),
-                            Server.customized,
-                            OtelSdk.custom(sourceName),
-                            OpenTelemetry.metrics(instrumentationScopeName),
-                            OpenTelemetry.logging(instrumentationScopeName, LogLevel.All),
-                            OpenTelemetry.tracing(instrumentationScopeName),
+                            openTelemetryLayers,
                             OpenTelemetry.zioMetrics,
-                            OpenTelemetry.contextZIO,
-                            PropagatorProvider.live(),
-                            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit
+                            OpenTelemetry.contextZIO
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
             case "s3" => {
-                val port = args(1).toInt
-
-                val nThreads: Int = args.headOption.flatMap(x => Try(x.toInt).toOption).getOrElse(0)
-
-                val config        = Server.Config.default
-                                        .responseCompression(Server.Config.ResponseCompressionConfig.default)
-                                        .port(port)
-                                        .enableRequestStreaming
-                val nettyConfig   = NettyConfig.default
-                                        .leakDetection(LeakDetectionLevel.PARANOID)
-                                        .maxThreads(nThreads)
  
                 val s3 = zio.s3
                             .live(
@@ -217,27 +197,16 @@ object Main extends zio.ZIOAppDefault:
                         *>  ZIO.never
                     )
                     .provide(
-                        PRNG.live,
-                        SessionManager.live(30.minutes), //TODO: add cache timeToLive to configuration file [fsolaroli - 10/01/2024]
-                        TollManager.live,
+                        commonLayers,
+                        commonLayers,
                         s3,
                         UserManager.minIO(s3, keyValueStorageFolderDepth),
                         BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
                         OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
                         SrpManager.v6a(),
-                                                    
-                        OtelSdk.custom(sourceName),
-                        OpenTelemetry.metrics(instrumentationScopeName),
-                        OpenTelemetry.logging(instrumentationScopeName),
-                        OpenTelemetry.tracing(instrumentationScopeName),
+                        openTelemetryLayers,
                         OpenTelemetry.zioMetrics,
-                        OpenTelemetry.contextZIO,
-                        PropagatorProvider.live(),
-                        zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit,
-
-                        ZLayer.succeed(config),
-                        ZLayer.succeed(nettyConfig),
-                        Server.customized
+                        OpenTelemetry.contextZIO
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
             }
             case _ => ZIO.logFatal("Error during running")

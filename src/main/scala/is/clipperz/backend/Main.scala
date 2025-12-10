@@ -104,13 +104,11 @@ object Main extends zio.ZIOAppDefault:
             PropagatorProvider.live() ++
             zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit ++
             PRNG.live ++
-            OtelSdk.custom(sourceName) ++
             configLayers ++
             (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live)) ++
             (configLayers >>> Server.customized)
 
         val openTelemetryLayers = OpenTelemetry.metrics(instrumentationScopeName) ++
-            OpenTelemetry.logging(instrumentationScopeName) ++
             OpenTelemetry.tracing(instrumentationScopeName)
 
 
@@ -122,28 +120,33 @@ object Main extends zio.ZIOAppDefault:
                     val userBasePath         = FileSystem.default.getPath(args(3))
                     val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
 
+                    val clipperzServer = for { 
+                        port    <-  Server
+                                        .serve(completeClipperzBackend)
+                                        .provide(
+                                            commonLayers,
+                                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
+                                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
+                                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
+                                            SrpManager.v6a(),
+                                            openTelemetryLayers,
+                                            OtelSdk.custom(sourceName),
+                                            OpenTelemetry.contextZIO
+                                        )
+                        _       <-  ZIO.log(s"server started on port $port")
+                        _       <-  ZIO.never
+                    } yield ()
+
                     ( 
                         Files.createDirectories(blobBasePath) <*>
                         Files.createDirectories(userBasePath) <*>
                         Files.createDirectories(oneTimeShareBasePath)
                     ) *>
-                    Server
-                        .install(completeClipperzBackend)
-                        .flatMap(port =>
-                            println("SERVER STARTED")
-                                ZIO.logInfo(s"Server started on port ${port}")
-                            *>  ZIO.never
-                        )
+                    clipperzServer
                         .provide(
-                            commonLayers,
-                            commonLayers,
-                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
-                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
-                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
-                            SrpManager.v6a(),
-                            openTelemetryLayers,
-                            OpenTelemetry.zioMetrics,
-                            OpenTelemetry.contextZIO
+                            OtelSdk.custom(sourceName),
+                            OpenTelemetry.contextZIO,
+                            OpenTelemetry.logging(instrumentationScopeName)
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
@@ -159,22 +162,27 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
-                    Server
-                        .install(completeClipperzBackend)
-                        .flatMap(port =>
-                            ZIO.logInfo("SERVER STARTED") *>
-                                ZIO.logInfo(s"Server started on port ${port}")
-                            *>  ZIO.never
-                        )
+                    val clipperzServer = for { 
+                        port    <-  Server
+                                        .serve(completeClipperzBackend)
+                                        .provide(
+                                            UserManager.sqlLite(transactor),
+                                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
+                                            OneTimeShareManager.sqlLite(transactor),
+                                            commonLayers,
+                                            SrpManager.v6a(),
+                                            openTelemetryLayers,
+                                            OtelSdk.custom(sourceName),
+                                            OpenTelemetry.contextZIO
+                                        )
+                        _       <- ZIO.log(s"server started on port $port")
+                        _       <- ZIO.never
+                    } yield ()
+
+                    clipperzServer
                         .provide(
-                            commonLayers,
-                            commonLayers,
-                            UserManager.sqlLite(transactor),
-                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
-                            OneTimeShareManager.sqlLite(transactor),
-                            SrpManager.v6a(),
-                            openTelemetryLayers,
-                            OpenTelemetry.zioMetrics,
+                            OtelSdk.custom(sourceName),
+                            OpenTelemetry.logging(instrumentationScopeName),
                             OpenTelemetry.contextZIO
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
@@ -189,23 +197,28 @@ object Main extends zio.ZIOAppDefault:
                                 forcePathStyle = Some(true)
                             )
 
-                Server
-                    .install(completeClipperzBackend)
-                    .flatMap(port =>
-                        println("SERVER STARTED")
-                            ZIO.logInfo(s"Server started on port ${port}")
-                        *>  ZIO.never
-                    )
+                val clipperzServer = for {
+                    port    <-  Server
+                                    .serve(completeClipperzBackend)
+                                    .provide(
+                                        s3,
+                                        UserManager.minIO(s3, keyValueStorageFolderDepth),
+                                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
+                                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
+                                        commonLayers,
+                                        SrpManager.v6a(),
+                                        openTelemetryLayers,
+                                        OtelSdk.custom(sourceName),
+                                        OpenTelemetry.contextZIO
+                                    )
+                    _       <- ZIO.log(s"server started on port $port")
+                    _       <- ZIO.never
+                } yield ()
+
+                clipperzServer
                     .provide(
-                        commonLayers,
-                        commonLayers,
-                        s3,
-                        UserManager.minIO(s3, keyValueStorageFolderDepth),
-                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
-                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
-                        SrpManager.v6a(),
-                        openTelemetryLayers,
-                        OpenTelemetry.zioMetrics,
+                        OtelSdk.custom(sourceName),
+                        OpenTelemetry.logging(instrumentationScopeName),
                         OpenTelemetry.contextZIO
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
             }

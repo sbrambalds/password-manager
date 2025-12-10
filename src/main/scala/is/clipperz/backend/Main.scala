@@ -108,9 +108,15 @@ object Main extends zio.ZIOAppDefault:
             (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live)) ++
             (configLayers >>> Server.customized)
 
-        val openTelemetryLayers = OpenTelemetry.metrics(instrumentationScopeName) ++
-            OpenTelemetry.tracing(instrumentationScopeName)
+        val otelCoreLayer =
+            (   OtelSdk.custom(sourceName) ++
+                OpenTelemetry.contextZIO
+            ) >>> (OpenTelemetry.tracing(instrumentationScopeName))
 
+        val otelLogging =             
+            (   OtelSdk.custom(sourceName) ++
+                OpenTelemetry.contextZIO
+            ) >>> (OpenTelemetry.logging(instrumentationScopeName) ++ OpenTelemetry.metrics(instrumentationScopeName))
 
         args(0) match {
             case "fileSystem" => {
@@ -120,33 +126,24 @@ object Main extends zio.ZIOAppDefault:
                     val userBasePath         = FileSystem.default.getPath(args(3))
                     val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
 
-                    val clipperzServer = for { 
-                        port    <-  Server
-                                        .serve(completeClipperzBackend)
-                                        .provide(
-                                            commonLayers,
-                                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
-                                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
-                                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
-                                            SrpManager.v6a(),
-                                            openTelemetryLayers,
-                                            OtelSdk.custom(sourceName),
-                                            OpenTelemetry.contextZIO
-                                        )
-                        _       <-  ZIO.log(s"server started on port $port")
-                        _       <-  ZIO.never
-                    } yield ()
-
                     ( 
                         Files.createDirectories(blobBasePath) <*>
                         Files.createDirectories(userBasePath) <*>
                         Files.createDirectories(oneTimeShareBasePath)
                     ) *>
-                    clipperzServer
+                    Server
+                        .serve(completeClipperzBackend)
                         .provide(
+                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
+                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
+                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
+                            commonLayers,
+                            SrpManager.v6a(),
+                            otelCoreLayer,
                             OtelSdk.custom(sourceName),
-                            OpenTelemetry.contextZIO,
-                            OpenTelemetry.logging(instrumentationScopeName)
+                            OpenTelemetry.contextZIO
+                        ).provide(
+                            otelLogging
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
@@ -162,28 +159,19 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
-                    val clipperzServer = for { 
-                        port    <-  Server
-                                        .serve(completeClipperzBackend)
-                                        .provide(
-                                            UserManager.sqlLite(transactor),
-                                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
-                                            OneTimeShareManager.sqlLite(transactor),
-                                            commonLayers,
-                                            SrpManager.v6a(),
-                                            openTelemetryLayers,
-                                            OtelSdk.custom(sourceName),
-                                            OpenTelemetry.contextZIO
-                                        )
-                        _       <- ZIO.log(s"server started on port $port")
-                        _       <- ZIO.never
-                    } yield ()
-
-                    clipperzServer
+                    Server
+                        .serve(completeClipperzBackend)
                         .provide(
+                            UserManager.sqlLite(transactor),
+                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
+                            OneTimeShareManager.sqlLite(transactor),
+                            commonLayers,
+                            SrpManager.v6a(),
+                            otelCoreLayer,
                             OtelSdk.custom(sourceName),
-                            OpenTelemetry.logging(instrumentationScopeName),
                             OpenTelemetry.contextZIO
+                        ).provide(
+                            otelLogging
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
                 else ZIO.logFatal("Not enough arguments")
             }
@@ -197,29 +185,20 @@ object Main extends zio.ZIOAppDefault:
                                 forcePathStyle = Some(true)
                             )
 
-                val clipperzServer = for {
-                    port    <-  Server
-                                    .serve(completeClipperzBackend)
-                                    .provide(
-                                        s3,
-                                        UserManager.minIO(s3, keyValueStorageFolderDepth),
-                                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
-                                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
-                                        commonLayers,
-                                        SrpManager.v6a(),
-                                        openTelemetryLayers,
-                                        OtelSdk.custom(sourceName),
-                                        OpenTelemetry.contextZIO
-                                    )
-                    _       <- ZIO.log(s"server started on port $port")
-                    _       <- ZIO.never
-                } yield ()
-
-                clipperzServer
+                Server
+                    .serve(completeClipperzBackend)
                     .provide(
-                        OtelSdk.custom(sourceName),
-                        OpenTelemetry.logging(instrumentationScopeName),
-                        OpenTelemetry.contextZIO
+                        s3,
+                        UserManager.minIO(s3, keyValueStorageFolderDepth),
+                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
+                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
+                        commonLayers,
+                        SrpManager.v6a(),
+                        otelCoreLayer,
+                        OpenTelemetry.contextZIO,
+                        OtelSdk.custom(sourceName) 
+                    ).provide(
+                        otelLogging
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
             }
             case _ => ZIO.logFatal("Error during running")

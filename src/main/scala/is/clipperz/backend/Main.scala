@@ -96,27 +96,23 @@ object Main extends zio.ZIOAppDefault:
             .leakDetection(LeakDetectionLevel.PARANOID)
             .maxThreads(nThreads)
 
-        val configLayers =
-            ZLayer.succeed(config) ++
-            ZLayer.succeed(nettyConfig)
+        val configLayer =
+            (ZLayer.succeed(config) ++ ZLayer.succeed(nettyConfig)) >>> Server.customized
 
-        val commonLayers =
-            PropagatorProvider.live() ++
-            zio.metrics.jvm.DefaultJvmMetrics.liveV2.unit ++
-            PRNG.live ++
-            configLayers ++
-            (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live)) ++
-            (configLayers >>> Server.customized)
+        val otelCore = 
+            OtelSdk.custom(sourceName) ++ OpenTelemetry.contextZIO ++ PropagatorProvider.live()
 
-        val otelCoreLayer =
-            (   OtelSdk.custom(sourceName) ++
-                OpenTelemetry.contextZIO
-            ) >>> (OpenTelemetry.tracing(instrumentationScopeName))
+        val servicesLayer =
+            SrpManager.v6a() ++ (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live))
+
+        val otelTracing =
+            otelCore >>> (OpenTelemetry.tracing(instrumentationScopeName))
 
         val otelLogging =             
-            (   OtelSdk.custom(sourceName) ++
-                OpenTelemetry.contextZIO
-            ) >>> (OpenTelemetry.logging(instrumentationScopeName) ++ OpenTelemetry.metrics(instrumentationScopeName))
+            otelCore >>> (OpenTelemetry.logging(instrumentationScopeName))
+
+        val otelMetrics =             
+            otelCore >>> (OpenTelemetry.metrics(instrumentationScopeName))
 
         args(0) match {
             case "fileSystem" => {
@@ -126,6 +122,11 @@ object Main extends zio.ZIOAppDefault:
                     val userBasePath         = FileSystem.default.getPath(args(3))
                     val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
 
+                    val storageLayer = 
+                        UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true) ++
+                        BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true) ++
+                        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true)
+
                     ( 
                         Files.createDirectories(blobBasePath) <*>
                         Files.createDirectories(userBasePath) <*>
@@ -134,14 +135,12 @@ object Main extends zio.ZIOAppDefault:
                     Server
                         .serve(completeClipperzBackend)
                         .provide(
-                            UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true),
-                            BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true),
-                            OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true),
-                            commonLayers,
-                            SrpManager.v6a(),
-                            otelCoreLayer,
-                            OtelSdk.custom(sourceName),
-                            OpenTelemetry.contextZIO
+                            PRNG.live,
+                            otelCore,
+                            otelTracing,
+                            servicesLayer,
+                            storageLayer,
+                            configLayer,
                         ).provide(
                             otelLogging
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
@@ -159,17 +158,19 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
+                    val storageLayer = UserManager.sqlLite(transactor) ++
+                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor) ++
+                            OneTimeShareManager.sqlLite(transactor) 
+
                     Server
                         .serve(completeClipperzBackend)
                         .provide(
-                            UserManager.sqlLite(transactor),
-                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor),
-                            OneTimeShareManager.sqlLite(transactor),
-                            commonLayers,
-                            SrpManager.v6a(),
-                            otelCoreLayer,
-                            OtelSdk.custom(sourceName),
-                            OpenTelemetry.contextZIO
+                            PRNG.live,
+                            otelCore,
+                            otelTracing,
+                            servicesLayer,
+                            storageLayer,
+                            configLayer,
                         ).provide(
                             otelLogging
                         ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
@@ -184,19 +185,23 @@ object Main extends zio.ZIOAppDefault:
                                 Some(URI.create("http://127.0.0.1:9000")),
                                 forcePathStyle = Some(true)
                             )
+                
+                val storageLayer = 
+                    s3 >>> (
+                        UserManager.minIO(s3, keyValueStorageFolderDepth) ++
+                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth) ++
+                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth)
+                    )
 
                 Server
                     .serve(completeClipperzBackend)
                     .provide(
-                        s3,
-                        UserManager.minIO(s3, keyValueStorageFolderDepth),
-                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth),
-                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth),
-                        commonLayers,
-                        SrpManager.v6a(),
-                        otelCoreLayer,
-                        OpenTelemetry.contextZIO,
-                        OtelSdk.custom(sourceName) 
+                        PRNG.live,
+                        otelCore,
+                        otelTracing,
+                        servicesLayer,
+                        storageLayer,
+                        configLayer,
                     ).provide(
                         otelLogging
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))

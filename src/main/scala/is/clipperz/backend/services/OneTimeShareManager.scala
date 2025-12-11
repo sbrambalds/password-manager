@@ -115,8 +115,7 @@ object OneTimeShareManager:
         )
 
     def minIO(
-        s3: ZLayer[Any, S3Exception, S3],
-        levels: Int
+        s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[S3, Throwable, OneTimeShareManager] =
                 ZLayer.scoped(
             KeyValueStorage.MinIOKeyValueStorage("one-time-share")

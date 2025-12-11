@@ -149,6 +149,7 @@ object Main extends zio.ZIOAppDefault:
             case "db" => {
                 if args.length == 3
                 then
+                    val blobPath = FileSystem.default.getPath("target/blobs")
 
                     val dataSourceConfig = new HikariConfig()
                     dataSourceConfig.setJdbcUrl("jdbc:sqlite:" + args(2) + "clipperzDb.db")
@@ -158,8 +159,9 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
-                    val storageLayer = UserManager.sqlLite(transactor) ++
-                            BlobManager.sqlLite(FileSystem.default.getPath("target/blobs"), transactor) ++
+                    val storageLayer = 
+                            UserManager.sqlLite(transactor) ++
+                            BlobManager.sqlLite(blobPath, transactor) ++
                             OneTimeShareManager.sqlLite(transactor) 
 
                     Server
@@ -177,6 +179,8 @@ object Main extends zio.ZIOAppDefault:
                 else ZIO.logFatal("Not enough arguments")
             }
             case "s3" => {
+
+                val blobPath = FileSystem.default.getPath("target/blobs")
  
                 val s3 = zio.s3
                             .live(
@@ -187,11 +191,11 @@ object Main extends zio.ZIOAppDefault:
                             )
                 
                 val storageLayer = 
-                    s3 >>> (
-                        UserManager.minIO(s3, keyValueStorageFolderDepth) ++
-                        BlobManager.minIO(FileSystem.default.getPath("target/blobs"), s3, keyValueStorageFolderDepth) ++
-                        OneTimeShareManager.minIO(s3, keyValueStorageFolderDepth)
-                    )
+                        s3 >>> (
+                            UserManager.minIO(s3) ++
+                            BlobManager.minIO(blobPath, s3) ++
+                            OneTimeShareManager.minIO(s3)
+                        )
 
                 Server
                     .serve(completeClipperzBackend)

@@ -140,8 +140,7 @@ object BlobManager:
 
     def minIO (
         basePath: Path,
-        s3: ZLayer[Any, S3Exception, S3],
-        levels: Int,
+        s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[S3, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(

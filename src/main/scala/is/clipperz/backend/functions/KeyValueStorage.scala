@@ -254,9 +254,9 @@ object KeyValueStorage:
                 exists <- s3.isBucketExists(bucketName)
                 _ <- ZIO.when(!exists)(
                     for {
-                        // objects <- s3.listAllObjects(bucketName).runCollect
-                        // _ <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
-                        // _ <- s3.deleteBucket(bucketName)
+                        objects <- s3.listAllObjects(bucketName).runCollect
+                        _ <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
+                        _ <- s3.deleteBucket(bucketName)
                         _ <- s3.createBucket(bucketName)
                     } yield ()
                 )

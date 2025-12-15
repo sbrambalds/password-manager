@@ -67,6 +67,12 @@ createDbDirectories := {
   }
 }
 
+lazy val runCollector = TaskKey[Unit]("runCollector", "Start otel collector")
+runCollector := {
+  import sys.process.*
+  "npm run run-collector" !
+}
+
 lazy val createFSDirectories = TaskKey[Unit]("createFSDirectories", "Create blobs directories")
 createFSDirectories := {
   val blob = baseDirectory.value / "target" / "archive" / "blobs"

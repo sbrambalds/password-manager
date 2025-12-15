@@ -1,0 +1,132 @@
+# See https://opentelemetry.io/docs/collector/configuration/#receivers
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      # http:
+      #   endpoint: 0.0.0.0:4318
+
+extensions:
+  file_storage:
+    directory: /storage
+    create_directory: true
+
+
+# See https://opentelemetry.io/docs/collector/configuration/#processors
+# Also see https://github.com/open-telemetry/opentelemetry-collector/tree/main/processor#recommended-processors
+processors:
+  batch:
+
+  tail_sampling:          # The tail sampler processor will only keep traces where spans match the defined policies.
+    decision_wait: 30s    # The time to wait for a decision to be made.
+    # The following policies follow a logical OR pattern, meaning that if any of the policies match,
+    # the trace will be kept. For logical AND, you can use the `and` policy. Every span of a trace is
+    # examined by each policy in turn. A match will cause a short-circuit.
+    policies: [
+      {
+        # This policy defines that traces that include spans that contain errors should be kept.
+        name: sample-erroring-traces,
+        type: status_code,
+        status_code: { status_codes: [ERROR] }
+      },
+      {
+        # This policy defines that traces that are over 200ms should be sampled.        
+        name: sample-long-traces,
+        type: latency,
+        latency: { threshold_ms: 200 },
+      },
+    ]
+
+# See https://opentelemetry.io/docs/collector/configuration/#exporters
+exporters:
+  file:
+    path: ./otel.export.json
+
+  otlp/collector:
+    endpoint: http://proxy-collector:4321
+    tls:
+      insecure: true
+    sending_queue:
+      storage: file_storage
+      queue_size: 5_000 # Increase queue size (default 1000)
+    retry_on_failure:
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 10m # Increase max retry time (default 300s)
+
+# See https://opentelemetry.io/docs/collector/configuration/#connectors
+connectors:
+  
+  spanmetrics:                      # The spanmetrics connector is used to output span metrics based on received trace spans.
+    namespace: traces.spanmetrics   # Prefix all metrics with `traces.spanmetrics` (this becomes `traces_spanmetrics`).
+    histogram:
+      explicit:                     # Explicit histograms have pre-defined bucket sizes (use default here).
+    dimensions:                     # Defines additional label dimensions of the metrics from trace span attributes present.
+      - name: http.method
+      - name: http.target
+      - name: http.status_code
+      - name: service.version
+    exemplars:                      # Ensure exemplars are enabled and sent to the metrics store.
+      enabled: true
+
+  servicegraph:                     # The servicegraph connector is used to output service node metrics based on received trace spans.
+      # Defines which exporter the processor will write metrics to.
+      metrics_exporter: prometheusremotewrite
+      # Defines additional label dimensions of the metrics from trace span attributes present.
+      store:                      # Configuration for the in-memory store.
+        ttl: 2s                   # Time to wait for an edge to be completed.
+        max_items: 200            # Number of edges that will be stored in the storeMap.
+      cache_loop: 2m              # The timeout used to clean the cache periodically.
+      store_expiration_loop: 10s  # The timeout used to expire old entries from the store periodically.
+      # Virtual node peer attributes allow server nodes to be generated where instrumentation isn't present (eg. where
+      # service client calls remotely to a service that does not include instrumentation).
+      # Service nodes/edges will be generated for any attribute defined.
+      virtual_node_peer_attributes:
+        - db.name
+
+
+# The service section is used to configure what components are enabled in the Collector,
+# based on the configuration found in the receivers, processors, exporters, and extensions sections.
+# If a component is configured, but not defined within the service section, then it’s not enabled.
+service:
+  extensions: [file_storage]    # The extensions subsection consists of a list of desired extensions to be enabled. 
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch]                     # Use the `batch` processor to process received trace spans.
+      exporters:  [otlp/collector]              # Export to the `otlp/grafana` exporter.
+
+      #processors: [tail_sampling, batch]      # use tail sampling.
+      #processors: [servicegraph,  batch]      # generate service graph metrics from within the OpenTelemetry Collector.
+      
+      #exporters: [otlp/grafana, spanmetrics]  # generate span metrics from within the OpenTelemetry Collector as well as exporting traces to Tempo.
+      
+      # -------------------------
+      # batch           => `processor`
+      # servicegraph    => `connector`    # used as `processor` !!!!!!! 
+      # tail_sampling   => `processor`
+
+    metrics:
+      receivers:  [otlp]                 # Receive metrics from the `prometheus` receiver.
+      processors: [batch]
+      exporters:  [otlp/collector]
+
+      #receivers: [prometheus, spanmetrics]    # import spanmetrics as well as prometheus metrics.
+
+      # spanmetrics     => `processor`    # used as `receiver` !!!!!!!
+      # prometheus      => `receiver` (removed)
+
+    logs:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [otlp/collector]
+
+  # telemetry:    # The telemetry config section is where you can set up observability for the Collector itself.
+                  # https://opentelemetry.io/docs/collector/internal-telemetry/#activate-internal-telemetry-in-the-collector
+  #   logs:       
+  #   metrics:
+
+
+# Access to environment variables:
+#  - ${env:DB_KEY}

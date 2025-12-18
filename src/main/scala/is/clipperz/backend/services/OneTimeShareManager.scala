@@ -118,7 +118,7 @@ object OneTimeShareManager:
         s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[S3, Throwable, OneTimeShareManager] =
                 ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage("one-time-share")
+            KeyValueStorage.MinIOKeyValueStorage("one_time_shares")
             .map(new KeyValueOneTimeShareManager(_))
             .provideLayer(s3)
         )

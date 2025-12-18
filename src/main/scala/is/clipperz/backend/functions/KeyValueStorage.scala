@@ -13,6 +13,8 @@ import zio.http.codec.HttpCodec.Metadata
 import zio.http.Header.ContentType
 import zio.nio.file.Files.Attribute
 import zio.nio.file.Files.Attributes
+import zio.telemetry.opentelemetry.common.Attributes as TelemetryAttributes
+import zio.telemetry.opentelemetry.common.Attribute as TelemetryAttribute
 import zio.Console.*
 
 import com.augustnagro.magnum.magzio.*
@@ -40,6 +42,12 @@ import zio.s3.S3
 import software.amazon.awssdk.services.s3.model.S3Exception
 import zio.stm.ZSTM
 import software.amazon.awssdk.utils.Md5Utils
+import zio.telemetry.opentelemetry.metrics.Meter
+import zio.s3.S3ObjectSummary
+import zio.metrics.Metric
+import is.clipperz.backend.middleware.collectS3Metrics
+import is.clipperz.backend.middleware.scheduledS3MetricsCollection
+import is.clipperz.backend.middleware.scheduledSQLiteMetricsCollection
 
 // ============================================================================
 
@@ -87,15 +95,15 @@ object KeyValueStorage:
         override def getBlob(key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
             (transactor.transact:
                 repo.findById(key) match
-                    case Some(dbTable)   => (ZStream.fromIterable(dbTable.blob), dbTable.blob.length.toLong)
+                    case Some(dbTable)  => (ZStream.fromIterable(dbTable.blob), dbTable.blob.length.toLong)
                     case _              => throw new ResourceNotFoundException("Referenced document does not exist")
             ) @@ MethodTracer("getBlob")
             
         override def getMetadata(key: Key): ZIO[Tracing, Throwable, ZStream[Any, Throwable, Byte]] = 
             (transactor.transact: 
                 repo.findById(key) match 
-                    case Some(dbTable)   => ZStream.fromIterable(dbTable.content.getBytes())
-                    case _              => throw new ResourceNotFoundException("Referenced document does not exist")
+                    case Some(dbTable)      => ZStream.fromIterable(dbTable.content.getBytes())
+                    case _                  => throw new ResourceNotFoundException("Referenced document does not exist")
             ) @@ MethodTracer("getMetaData")
 
         override def deleteBlob(key: Key): ZIO[Tracing, Throwable, Unit] = 
@@ -112,8 +120,8 @@ object KeyValueStorage:
             .flatMap(path =>
                 Files.exists(path)
                 .flatMap(exists => exists match {
-                    case true   => (Files.readAllBytes(path).map(ZStream.fromChunk)).zip(Files.size(path))
-                    case false  => ZIO.fail(new ResourceNotFoundException("Referenced blob does not exists"))
+                        case true   => (Files.readAllBytes(path).map(ZStream.fromChunk)).zip(Files.size(path))
+                        case false  => ZIO.fail(new ResourceNotFoundException("Referenced blob does not exists"))
                 })
             )
 
@@ -211,7 +219,7 @@ object KeyValueStorage:
         override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, content, ContentType.Blob) @@ MethodTracer("saveBlob")
 
         override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
-            saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata)
+            saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata) // *> databaseMetrics()
              @@ MethodTracer("saveBlobWithMetadata")
 
         override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob)) @@ MethodTracer("deleteBlob")
@@ -241,8 +249,9 @@ object KeyValueStorage:
     object SqlLiteKeyValueStorage:
         def apply[T <: DbTable](repo: Repo[T, T, Key], factory: (Key, String, Array[Byte]) => T): ZIO[Transactor, Throwable, SqlLiteKeyValueStorage[T]] = 
             for {
-                transactor <- ZIO.service[Transactor]
-                _ <- repo.createTable(transactor)
+                transactor  <- ZIO.service[Transactor]
+                _           <- repo.createTable(transactor)
+                _           <- scheduledSQLiteMetricsCollection[T](repo, transactor).forkDaemon
             } yield(new SqlLiteKeyValueStorage[T](repo, transactor, factory))
 
     object MinIOKeyValueStorage:
@@ -250,15 +259,15 @@ object KeyValueStorage:
             bucketName: String
         ): ZIO[S3, Throwable, MinIOKeyValueStorage] = 
             for {
-                s3 <- ZIO.service[S3]
-                exists <- s3.isBucketExists(bucketName)
-                _ <- ZIO.when(!exists)(
-                    for {
-                        objects <- s3.listAllObjects(bucketName).runCollect
-                        _ <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
-                        _ <- s3.deleteBucket(bucketName)
-                        _ <- s3.createBucket(bucketName)
-                    } yield ()
-                )
-
+                s3      <- ZIO.service[S3]
+                exists  <- s3.isBucketExists(bucketName)
+                _       <- ZIO.when(exists)(
+                                for {
+                                    objects <- s3.listAllObjects(bucketName).runCollect
+                                    _       <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
+                                    _       <- s3.deleteBucket(bucketName)
+                                    _       <- s3.createBucket(bucketName)
+                                } yield ()
+                            )
+                _       <- scheduledS3MetricsCollection(s3, bucketName).forkDaemon
             } yield new MinIOKeyValueStorage(bucketName, s3)

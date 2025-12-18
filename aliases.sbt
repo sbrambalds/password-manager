@@ -33,10 +33,9 @@ addCommandAlias("testAll", "test; testPurescript")
 addCommandAlias("b", "buildPurescript")
 addCommandAlias("c", "compile")
 addCommandAlias("t", "testAll")
-addCommandAlias("r", "runAllFileSystem")
 addCommandAlias("rfs", "runAllFileSystem")
 addCommandAlias("rdb", "runAllDb")
-addCommandAlias("rS3", "runAllS3")
+addCommandAlias("rs3", "runAllS3")
 
 addCommandAlias(
   "styleCheck",

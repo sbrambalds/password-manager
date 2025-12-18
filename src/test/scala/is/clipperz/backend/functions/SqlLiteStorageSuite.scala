@@ -25,7 +25,7 @@ import zio.telemetry.opentelemetry.OpenTelemetry
 object SqlLiteStorageSpec extends ZIOSpecDefault:
 
   val config = new HikariConfig()
-  config.setJdbcUrl("jdbc:sqlite:target/ClipperzDb.db")
+  config.setJdbcUrl("jdbc:sqlite:target/testDb.db")
   config.setDriverClassName("org.sqlite.JDBC")
   config.setMaximumPoolSize(5)
   config.setConnectionTestQuery("SELECT 1")
@@ -47,7 +47,7 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
       test("getBlob - fail") {
         val keyValueStorage =
           KeyValueStorage.SqlLiteKeyValueStorage[T](repo, ctor).provideLayer(transactor)
-
+          
         assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
       },
       test("saveBlob - success") {

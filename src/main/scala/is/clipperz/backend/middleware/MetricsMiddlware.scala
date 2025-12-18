@@ -9,8 +9,21 @@ import scala.jdk.CollectionConverters.*
 import zio.{ Clock, Duration, Chunk, RuntimeFlags, Schedule, Task, Trace, ZIO, durationInt }
 import zio.metrics.{ Metric, MetricLabel, MetricKeyType }
 import zio.http.{ Handler, HandlerAspect, Method, Middleware, RoutePattern, Response, Request, Routes }
+import zio.ZLayer
+import software.amazon.awssdk.services.s3.model.S3Exception
+import zio.s3.S3
+import zio.stream.ZSink
+import com.augustnagro.magnum.magzio.Transactor
+import is.clipperz.backend.sqlite.DbTable
+import is.clipperz.backend.sqlite.Key
+import com.augustnagro.magnum.magzio.*
+import zio.stream.ZStream
+import is.clipperz.backend.sqlite.UserRepo
+import is.clipperz.backend.sqlite.BlobRepo
+import is.clipperz.backend.sqlite.OneTimeShareRepo
 
 private val nanoToSeconds = 1e-9
+private val refreshRate = 30.minutes
 
 // STATIC METRICS
 
@@ -36,12 +49,56 @@ def collectFileSystemMetrics (path: Path): Task[(Long, Long, Array[Long])] =
             .runFold((0L, 0L, Array.empty[Long]))((acc, tuple) => ((acc._1 + tuple._1), (acc._2 + tuple._2), acc._3 :+ (tuple._2)))
             @@ Metric.counter("files.count")
                 .contramap[(Long, Long, Array[Long])](_._1)
-                // .tagged("archive", path.getFileName().nn.toString())
                 .tagged("archive", path.filename.toFile.toString)
+                .tagged("type", "file_system")
             @@ Metric.counter("files.size")
                 .contramap[(Long, Long, Array[Long])](_._2/1000)
                 .tagged("archive", path.filename.toFile.toString)
+                .tagged("type", "file_system")
     )
 
+def collectS3Metrics (s3: S3, bucketName: String): Task[(Long, Long, Array[Long])] =
+    ZIO.scoped(
+        for {
+            count           <- s3.listAllObjects(bucketName).run(ZSink.count)
+            space           <- s3.listAllObjects(bucketName).map(_.size).run(ZSink.sum[Long])
+            files           <- s3.listAllObjects(bucketName).map(_.size).run(ZSink.collectAllToSet)
+        } yield ((count, space, files.toArray))
+    ) @@ Metric.counter("files.count")
+        .contramap[(Long, Long, Array[Long])](_._1)
+        .tagged("archive", bucketName)
+        .tagged("type", "s3")
+    @@ Metric.counter("files.size")
+        .contramap[(Long, Long, Array[Long])](_._2/1000)
+        .tagged("archive", bucketName)
+        .tagged("type", "s3")
+
+def collectSqliteMetrics[T <: DbTable](repo: Repo[T, T, Key], transactor: Transactor, tableName: String): Task[(Long, Long, Array[Long])] =
+    transactor.transact {
+        (
+            repo.findAll.length.toLong, 
+            repo.findAll.map(_.blob.length.toLong).sum,
+            repo.findAll.map(_.blob.length.toLong).toArray
+        )
+    } @@ Metric.counter("files.count")
+        .contramap[(Long, Long, Array[Long])](_._1)
+        .tagged("archive", tableName)
+        .tagged("type", "sqlite")
+    @@ Metric.counter("files.size")
+        .contramap[(Long, Long, Array[Long])](_._2/1000)
+        .tagged("archive", tableName)
+        .tagged("type", "sqlite")
+
 def scheduledFileSystemMetricsCollection (path: Path) =
-    collectFileSystemMetrics(path) `repeat` Schedule.fixed(30.minutes)
+    collectFileSystemMetrics(path) `repeat` Schedule.fixed(refreshRate)
+
+def scheduledS3MetricsCollection (s3: S3, bucketname: String) =
+    collectS3Metrics(s3, bucketname) `repeat` Schedule.fixed(refreshRate)
+
+def scheduledSQLiteMetricsCollection[T <: DbTable] (repo: Repo[T, T, Key], transactor: Transactor) =
+    val tableName = repo match
+        case _: UserRepo          => "users"
+        case _: BlobRepo          => "blobs"
+        case _: OneTimeShareRepo  => "one_time_shares"
+        
+    collectSqliteMetrics(repo, transactor, tableName) `repeat` Schedule.fixed(refreshRate)

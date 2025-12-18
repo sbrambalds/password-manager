@@ -24,16 +24,14 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.Live
 import zio.s3.S3
 import software.amazon.awssdk.services.s3.model.S3Exception
+import zio.telemetry.opentelemetry.metrics.Meter
+import zio.telemetry.opentelemetry.OpenTelemetry
 
 // ----------------------------------------------------------------------------
 
 type BlobHash = HexString
 
 // ----------------------------------------------------------------------------
-
-// trait CollectMetrics:
-//     def collectMetrics (): Void
-
 
 trait BlobManager:
     def getBlob    (hash: BlobHash): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)]
@@ -145,7 +143,9 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-            KeyValueStorage.MinIOKeyValueStorage("blob")
+            KeyValueStorage.MinIOKeyValueStorage("blobs")
             .map(KeyValueBlobManager(_, baseTmpPath))
-            ).provideLayer(s3)
+            ).provideLayer(
+                s3
+            )
         )

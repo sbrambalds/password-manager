@@ -104,7 +104,8 @@ object OneTimeShareManager:
         requireExistingPath: Boolean = true,
     ): ZLayer[Any, Throwable, OneTimeShareManager] =
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueOneTimeShareManager(_))
+            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+                .map(new KeyValueOneTimeShareManager(_))
         )
 
     def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, OneTimeShareManager] = 
@@ -116,9 +117,9 @@ object OneTimeShareManager:
 
     def minIO(
         s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[S3, Throwable, OneTimeShareManager] =
-                ZLayer.scoped(
+    ): ZLayer[Any, Throwable, OneTimeShareManager] =
+        ZLayer.scoped(
             KeyValueStorage.MinIOKeyValueStorage("one_time_shares")
-            .map(new KeyValueOneTimeShareManager(_))
-            .provideLayer(s3)
+                .map(new KeyValueOneTimeShareManager(_))
+                .provideLayer(s3)
         )

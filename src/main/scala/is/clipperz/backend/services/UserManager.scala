@@ -140,7 +140,7 @@ object UserManager:
 
     def minIO(
         s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[S3, Throwable, UserManager] =
+    ): ZLayer[Any, Throwable, UserManager] =
                 ZLayer.scoped(
             KeyValueStorage.MinIOKeyValueStorage("users")
             .map(new KeyValueUserManager(_))

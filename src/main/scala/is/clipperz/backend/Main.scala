@@ -3,7 +3,7 @@ package is.clipperz.backend
 import is.clipperz.backend.apis.{ blobsApi, loginApi, logoutApi, staticApi, usersApi, oneTimeShareApi }
 import is.clipperz.backend.functions.{ customErrorHandler }
 import is.clipperz.backend.middleware.{ hashcash }
-import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpManager, TollManager, UserManager, OneTimeShareManager, Metric }
+import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpManager, TollManager, UserManager, OneTimeShareManager }
 import is.clipperz.backend.services.ChallengeType
 import is.clipperz.backend.otel.*
 

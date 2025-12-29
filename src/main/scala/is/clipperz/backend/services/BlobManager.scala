@@ -120,8 +120,8 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             initializeBlobArchive(baseTmpPath) *>
-            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
-            .map(KeyValueBlobManager(_, baseTmpPath))
+                KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+                    .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
     def sqlLite(
@@ -131,21 +131,19 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-            KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
-                .map(KeyValueBlobManager(_, baseTmpPath))
+                KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
+                    .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(transactor)
         )
 
     def minIO (
         basePath: Path,
         s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[S3, Throwable, BlobManager] =
+    ): ZLayer[Any, Throwable, BlobManager] =
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-            KeyValueStorage.MinIOKeyValueStorage("blobs")
-            .map(KeyValueBlobManager(_, baseTmpPath))
-            ).provideLayer(
-                s3
-            )
+                KeyValueStorage.MinIOKeyValueStorage("blobs")
+                    .map(KeyValueBlobManager(_, baseTmpPath))
+            ).provideLayer(s3)
         )

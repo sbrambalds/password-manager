@@ -3,7 +3,7 @@ package is.clipperz.backend
 import is.clipperz.backend.apis.{ blobsApi, loginApi, logoutApi, staticApi, usersApi, oneTimeShareApi }
 import is.clipperz.backend.functions.{ customErrorHandler }
 import is.clipperz.backend.middleware.{ hashcash }
-import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpManager, TollManager, UserManager, OneTimeShareManager }
+import is.clipperz.backend.services.{ BlobManager, PRNG, SessionManager, SrpManager, TollManager, UserManager, OneTimeShareManager, Metric }
 import is.clipperz.backend.services.ChallengeType
 import is.clipperz.backend.otel.*
 
@@ -38,6 +38,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.S3
 import zio.s3.S3Settings
 import zio.s3.S3Region
+import zio.metrics.Metrics
 
 object Main extends zio.ZIOAppDefault:
     override val bootstrap =
@@ -48,7 +49,7 @@ object Main extends zio.ZIOAppDefault:
         Tracing & io.opentelemetry.api.OpenTelemetry & PropagatorProvider & zio.telemetry.opentelemetry.context.ContextStorage
 
     type ClipperzEnvironment =
-        PRNG & SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager & InstrumentationEnvironment
+        SessionManager & TollManager & UserManager & BlobManager & OneTimeShareManager & SrpManager & InstrumentationEnvironment
 
     type ClipperzHttpApp = Routes[
         ClipperzEnvironment
@@ -96,60 +97,32 @@ object Main extends zio.ZIOAppDefault:
             .leakDetection(LeakDetectionLevel.PARANOID)
             .maxThreads(nThreads)
 
-        val configLayer =
-                (ZLayer.succeed(config) ++ ZLayer.succeed(nettyConfig)) >>> Server.customized
+        val configLayer     = (ZLayer.succeed(config) ++ ZLayer.succeed(nettyConfig)) >>> Server.customized
+        val otelCore        = OtelSdk.custom(sourceName) ++ OpenTelemetry.contextZIO ++ PropagatorProvider.live()
+        val servicesLayer   = PRNG.live >>> (SrpManager.v6a() ++ SessionManager.live(30.minutes) ++ TollManager.live)
 
-        val otelCore = 
-                OtelSdk.custom(sourceName) ++ OpenTelemetry.contextZIO ++ PropagatorProvider.live()
+        val otelTracing     = otelCore >>> (OpenTelemetry.tracing(instrumentationScopeName))
+        val otelLogging     = otelCore >>> (OpenTelemetry.logging(instrumentationScopeName))
+        val otelMetrics     = otelCore >>> (OpenTelemetry.metrics(instrumentationScopeName))
+        val clipperzLayer   = otelCore ++ servicesLayer ++ configLayer
 
-        val servicesLayer =
-                SrpManager.v6a() ++ (PRNG.live >>> (SessionManager.live(30.minutes) ++ TollManager.live))
-
-        val otelTracing =
-                otelCore >>> (OpenTelemetry.tracing(instrumentationScopeName))
-
-        val otelLogging =             
-                otelCore >>> (OpenTelemetry.logging(instrumentationScopeName))
-
-        val otelMetrics =           
-                otelCore >>> (OpenTelemetry.metrics(instrumentationScopeName))
-
-        val clipperzLayer = otelCore ++ servicesLayer ++ configLayer
-
-        args(0) match {
-            case "fileSystem" => {
+        val storageLayerValue = args(0) match
+            case "fileSystem" =>
                 if args.length == 5
                 then
                     val blobBasePath         = FileSystem.default.getPath(args(2))
                     val userBasePath         = FileSystem.default.getPath(args(3))
                     val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
 
-                    val storageLayer = 
+                    Right(
                         UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true) ++
                         BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true) ++
                         OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true)
+                    )
 
-                    ( 
-                        Files.createDirectories(blobBasePath) <*>
-                        Files.createDirectories(userBasePath) <*>
-                        Files.createDirectories(oneTimeShareBasePath)
-                    ) *>
-                    Server
-                        .serve(completeClipperzBackend)
-                        .provide(
-                            PRNG.live,
-                            clipperzLayer,
-                            storageLayer,
-                            otelTracing
-                        ).provide(
-                            otelLogging
-                        ).provide(
-                            otelMetrics,
-                            OpenTelemetry.zioMetrics
-                        ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
-                else ZIO.logFatal("Not enough arguments")
-            }
-            case "db" => {
+                else Left(ZIO.logFatal("Not enough arguments"))
+
+            case "db" =>
                 if args.length == 3
                 then
                     val blobPath = FileSystem.default.getPath("target/blobs")
@@ -162,49 +135,43 @@ object Main extends zio.ZIOAppDefault:
                     val dataSource = new HikariDataSource(dataSourceConfig)
                     val transactor = Transactor.layer(dataSource)
 
-                    val storageLayer = 
-                            UserManager.sqlLite(transactor) ++
-                            BlobManager.sqlLite(blobPath, transactor) ++
-                            OneTimeShareManager.sqlLite(transactor) 
+                    Right(
+                        UserManager.sqlLite(transactor) ++
+                        BlobManager.sqlLite(blobPath, transactor) ++
+                        OneTimeShareManager.sqlLite(transactor) 
+                    )
 
-                    Server
-                        .serve(completeClipperzBackend)
-                        .provide(
-                            PRNG.live,
-                            clipperzLayer,
-                            storageLayer,
-                            otelTracing
-                        ).provide(
-                            otelLogging
-                        ).provide(
-                            otelMetrics,
-                            OpenTelemetry.zioMetrics
-                        ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
-                else ZIO.logFatal("Not enough arguments")
-            }
-            case "s3" => {
+                else Left(ZIO.logFatal("Not enough arguments"))
 
-                val blobPath = FileSystem.default.getPath("target/blobs")
- 
-                val s3 = zio.s3
-                            .live(
-                                Region.EU_CENTRAL_1,
-                                AwsBasicCredentials.create("TESTKEY", "TESTSECRET"),
-                                Some(URI.create("http://127.0.0.1:9000")),
-                                forcePathStyle = Some(true)
-                            )
-                
-                val storageLayer = 
+            case "s3" =>
+                if args.length == 3
+                then
+                    val blobPath = FileSystem.default.getPath("target/blobs")
+    
+                    val s3 = zio.s3
+                                .live(
+                                    Region.EU_CENTRAL_1,
+                                    AwsBasicCredentials.create("TESTKEY", "TESTSECRET"),
+                                    Some(URI.create("http://127.0.0.1:9000")),
+                                    forcePathStyle = Some(true)
+                                )
+                    Right(
                         s3 >>> (
                             UserManager.minIO(s3) ++
                             BlobManager.minIO(blobPath, s3) ++
                             OneTimeShareManager.minIO(s3)
                         )
+                    )
 
+                else Left(ZIO.logFatal("Not enough arguments"))
+
+            case _ => Left(ZIO.logFatal("Error during running"))
+
+        storageLayerValue match
+            case Right(storageLayer) => 
                 Server
                     .serve(completeClipperzBackend)
                     .provide(
-                        PRNG.live,
                         clipperzLayer,
                         storageLayer,
                         otelTracing
@@ -214,7 +181,5 @@ object Main extends zio.ZIOAppDefault:
                         otelMetrics,
                         OpenTelemetry.zioMetrics
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
-            }
-            case _ => ZIO.logFatal("Error during running")
-        }
+            case Left(error) => error
     })

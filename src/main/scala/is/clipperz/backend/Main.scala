@@ -144,15 +144,15 @@ object Main extends zio.ZIOAppDefault:
                 else Left(ZIO.logFatal("Not enough arguments"))
 
             case "s3" =>
-                if args.length == 3
+                if args.length == 2
                 then
                     val blobPath = FileSystem.default.getPath("target/blobs")
     
                     val s3 = zio.s3
                                 .live(
-                                    Region.EU_CENTRAL_1,
-                                    AwsBasicCredentials.create("TESTKEY", "TESTSECRET"),
-                                    Some(URI.create("http://127.0.0.1:9000")),
+                                    Region.US_EAST_1,
+                                    AwsBasicCredentials.create("minioadmin", "minioadmin"),
+                                    Some(URI.create("http://localhost:9000")),
                                     forcePathStyle = Some(true)
                                 )
                     Right(

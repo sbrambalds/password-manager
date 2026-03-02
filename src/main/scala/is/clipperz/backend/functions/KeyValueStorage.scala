@@ -269,5 +269,10 @@ object KeyValueStorage:
                                     _       <- s3.createBucket(bucketName)
                                 } yield ()
                             )
+                _       <-  ZIO.when(!exists)(
+                                for {
+                                    _       <- s3.createBucket(bucketName)
+                                } yield ()
+                            )
                 _       <- scheduledS3MetricsCollection(s3, bucketName).forkDaemon
             } yield new MinIOKeyValueStorage(bucketName, s3)

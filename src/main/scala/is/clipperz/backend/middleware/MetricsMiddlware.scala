@@ -16,6 +16,7 @@ import zio.stream.ZSink
 import com.augustnagro.magnum.magzio.Transactor
 import is.clipperz.backend.sqlite.DbTable
 import is.clipperz.backend.sqlite.Key
+import is.clipperz.backend.storage.ArchiveName
 import com.augustnagro.magnum.magzio.*
 import zio.stream.ZStream
 import is.clipperz.backend.sqlite.UserRepo
@@ -36,8 +37,9 @@ def elapsedTime[E, R](label: String, tags: Set[MetricLabel])(block: => ZIO[E, Th
     } yield result
 
 def collectFileSystemMetrics (path: Path): Task[(Long, Long, Array[Long])] =
+    val archive = ArchiveName.fromFsPath(path)
     // elapsedTime("files", Set(MetricLabel("archive", path.getFileName().nn.toString())))(
-    elapsedTime("files", Set(MetricLabel("archive", path.filename.toFile.toString)))(
+    elapsedTime("files", Set(MetricLabel("archive", archive)))(
         // ZIO.attempt(Files.walk(path).nn.iterator().nn.asScala
         Files.walk(path)
             // .map(_.toFile().nn)
@@ -49,11 +51,11 @@ def collectFileSystemMetrics (path: Path): Task[(Long, Long, Array[Long])] =
             .runFold((0L, 0L, Array.empty[Long]))((acc, tuple) => ((acc._1 + tuple._1), (acc._2 + tuple._2), acc._3 :+ (tuple._2)))
             @@ Metric.counter("files.count")
                 .contramap[(Long, Long, Array[Long])](_._1)
-                .tagged("archive", path.filename.toFile.toString)
+                .tagged("archive", archive)
                 .tagged("type", "file_system")
             @@ Metric.counter("files.size")
                 .contramap[(Long, Long, Array[Long])](_._2/1000)
-                .tagged("archive", path.filename.toFile.toString)
+                .tagged("archive", archive)
                 .tagged("type", "file_system")
     )
 
@@ -97,8 +99,8 @@ def scheduledS3MetricsCollection (s3: S3, bucketname: String) =
 
 def scheduledSQLiteMetricsCollection[T <: DbTable] (repo: Repo[T, T, Key], transactor: Transactor) =
     val tableName = repo match
-        case _: UserRepo          => "users"
-        case _: BlobRepo          => "blobs"
-        case _: OneTimeShareRepo  => "one_time_shares"
-        
+        case _: UserRepo          => ArchiveName.users
+        case _: BlobRepo          => ArchiveName.blobs
+        case _: OneTimeShareRepo  => ArchiveName.oneTimeShares
+
     collectSqliteMetrics(repo, transactor, tableName) `repeat` Schedule.fixed(refreshRate)

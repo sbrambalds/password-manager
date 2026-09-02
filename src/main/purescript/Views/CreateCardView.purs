@@ -203,6 +203,8 @@ createCardView cardFormData@{card} originalCard allTags passwordGeneratorSetting
           span [Props.className "label"] [text "Title"]
         , dynamicWrapper Nothing                 (view (_card <<< _title)  cardFormData) $ 
             textarea  [ Props.rows 1
+                      , Props._id "card_title"
+                      , Props.name "card_title"
                       , Props.placeholder "Card title"
                       , Props.autoFocus true
                       , Props.unsafeTargetValue <$> Props.onChange

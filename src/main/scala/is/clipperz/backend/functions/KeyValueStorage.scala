@@ -48,6 +48,8 @@ import zio.metrics.Metric
 import is.clipperz.backend.middleware.collectS3Metrics
 import is.clipperz.backend.middleware.scheduledS3MetricsCollection
 import is.clipperz.backend.middleware.scheduledSQLiteMetricsCollection
+import is.clipperz.backend.middleware.refreshSqliteMetrics
+import is.clipperz.backend.middleware.collectFileSystemMetrics
 
 // ============================================================================
 
@@ -88,6 +90,7 @@ object KeyValueStorage:
                             case false => repo.insert(entity)
                         }
                     }    
+                _           <- refreshSqliteMetrics[T](repo, transactor).forkDaemon
             } yield ())
             .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME)
             ) @@ MethodTracer("saveBlobMetadata")
@@ -142,6 +145,7 @@ object KeyValueStorage:
                 case ex: EmptyContentException => ZIO.fail(ex)
                 case ex: NonReadableArchiveException => ZIO.fail(ex)
                 case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
+            .tap(_ => collectFileSystemMetrics(basePath).forkDaemon)
 
         private def moveFile (key: Key, content: Path): ZIO[Tracing, Throwable, Unit] =
             getBlobPath(key, true)
@@ -215,12 +219,15 @@ object KeyValueStorage:
                 case ex: EmptyContentException => ZIO.fail(ex)
                 case ex: NonReadableArchiveException => ZIO.fail(ex)
                 case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
+            .tap(_ => collectS3Metrics(s3, bucketName).forkDaemon)
 
-        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = saveData(key, content, ContentType.Blob) @@ MethodTracer("saveBlob")
+        override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
+            saveData(key, content, ContentType.Blob)
+             @@ MethodTracer("saveBlob")
 
         override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
-            saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata) // *> databaseMetrics()
-             @@ MethodTracer("saveBlobWithMetadata")
+            saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata)
+            @@ MethodTracer("saveBlobWithMetadata")
 
         override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob)) @@ MethodTracer("deleteBlob")
 

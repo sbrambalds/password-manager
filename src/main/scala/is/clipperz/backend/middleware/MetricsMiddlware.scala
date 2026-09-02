@@ -97,10 +97,12 @@ def scheduledFileSystemMetricsCollection (path: Path) =
 def scheduledS3MetricsCollection (s3: S3, bucketname: String) =
     collectS3Metrics(s3, bucketname) `repeat` Schedule.fixed(refreshRate)
 
-def scheduledSQLiteMetricsCollection[T <: DbTable] (repo: Repo[T, T, Key], transactor: Transactor) =
-    val tableName = repo match
-        case _: UserRepo          => ArchiveName.users
-        case _: BlobRepo          => ArchiveName.blobs
-        case _: OneTimeShareRepo  => ArchiveName.oneTimeShares
+def scheduledSQLiteMetricsCollection[T <: DbTable](repo: Repo[T, T, Key], transactor: Transactor) =
+    refreshSqliteMetrics(repo, transactor) `repeat` Schedule.fixed(refreshRate)
 
-    collectSqliteMetrics(repo, transactor, tableName) `repeat` Schedule.fixed(refreshRate)
+def refreshSqliteMetrics[T <: DbTable](repo: Repo[T, T, Key], transactor: Transactor): Task[(Long, Long, Array[Long])] =
+    val tableName = repo match
+        case _: UserRepo         => ArchiveName.users
+        case _: BlobRepo         => ArchiveName.blobs
+        case _: OneTimeShareRepo => ArchiveName.oneTimeShares
+    collectSqliteMetrics(repo, transactor, tableName)

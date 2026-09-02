@@ -43,8 +43,32 @@ exporters:
   file:
     path: ./otel.export.json
 
-  otlp/collector:
-    endpoint: http://proxy-collector:4321
+  otlp/traces:
+    endpoint: http://localhost:4319
+    tls:
+      insecure: true
+    sending_queue:
+      storage: file_storage
+      queue_size: 5_000 # Increase queue size (default 1000)
+    retry_on_failure:
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 10m # Increase max retry time (default 300s)
+
+  otlp/logs:
+    endpoint: http://localhost:4319
+    tls:
+      insecure: true
+    sending_queue:
+      storage: file_storage
+      queue_size: 5_000 # Increase queue size (default 1000)
+    retry_on_failure:
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 10m # Increase max retry time (default 300s)
+
+  otlp/metrics:
+    endpoint: http://localhost:4319
     tls:
       insecure: true
     sending_queue:
@@ -95,7 +119,7 @@ service:
     traces:
       receivers:  [otlp]
       processors: [batch]                     # Use the `batch` processor to process received trace spans.
-      exporters:  [otlp/collector]              # Export to the `otlp/grafana` exporter.
+      exporters:  [otlp/traces]              # Export to the `otlp/grafana` exporter.
 
       #processors: [tail_sampling, batch]      # use tail sampling.
       #processors: [servicegraph,  batch]      # generate service graph metrics from within the OpenTelemetry Collector.
@@ -110,7 +134,7 @@ service:
     metrics:
       receivers:  [otlp]                 # Receive metrics from the `prometheus` receiver.
       processors: [batch]
-      exporters:  [otlp/collector]
+      exporters:  [otlp/metrics]
 
       #receivers: [prometheus, spanmetrics]    # import spanmetrics as well as prometheus metrics.
 
@@ -120,7 +144,7 @@ service:
     logs:
       receivers:  [otlp]
       processors: [batch]
-      exporters:  [otlp/collector]
+      exporters:  [otlp/logs]
 
   # telemetry:    # The telemetry config section is where you can set up observability for the Collector itself.
                   # https://opentelemetry.io/docs/collector/internal-telemetry/#activate-internal-telemetry-in-the-collector

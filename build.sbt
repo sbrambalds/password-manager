@@ -67,10 +67,10 @@ createDbDirectories := {
   }
 }
 
-lazy val runCollector = TaskKey[Unit]("runCollector", "Start otel collector")
-runCollector := {
+lazy val startS3 = TaskKey[Unit]("startS3", "Start S3 minIO container")
+startS3 := {
   import sys.process.*
-  "npm run run-collector" !
+  "npm run run-s3" !
 }
 
 lazy val createFSDirectories = TaskKey[Unit]("createFSDirectories", "Create blobs directories")
@@ -180,6 +180,11 @@ Compile / mainClass := Some("is.clipperz.backend.Main")
 
 assembly / assemblyJarName := "clipperz.jar"
 assembly / assemblyMergeStrategy := {
- case PathList("META-INF", _*) => MergeStrategy.discard
- case _                        => MergeStrategy.first
+  case PathList("META-INF", "services", _*)         => MergeStrategy.concat
+  case PathList("META-INF", xs @ _*) if xs.lastOption.exists(f =>
+        f.endsWith(".SF") || f.endsWith(".DSA") || f.endsWith(".RSA")) => MergeStrategy.discard
+  case PathList("META-INF", _*)                     => MergeStrategy.discard
+  case "module-info.class"                          => MergeStrategy.discard
+  case _                                            => MergeStrategy.first
 }
+

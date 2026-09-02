@@ -15,7 +15,7 @@ object LoggerProvider:
 
   def otlpGrpc(resourceName: String): RIO[Scope, SdkLoggerProvider] =
     for {
-      logRecordExporter  <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcLogRecordExporter.builder().build()))
+      logRecordExporter  <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcLogRecordExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
       logRecordProcessor <- ZIO.fromAutoCloseable(
         ZIO.succeed(
           BatchLogRecordProcessor

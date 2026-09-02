@@ -6,15 +6,15 @@ addCommandAlias(
 )
 addCommandAlias(
   "runAllS3", 
-  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; runCollector; run \"s3\" \"8090\""
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; startS3; run \"s3\" \"8090\" \"http://localhost:9000\""
 )
 addCommandAlias(
   "runAllFileSystem",
-  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; runCollector; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\"",
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\"",
 )
 addCommandAlias(
   "runAllDb",
-  "installPurescript; buildPurescript; packagePurescript; createDbDirectories; runCollector; run \"db\" \"8090\" \"target/db/\"",
+  "installPurescript; buildPurescript; packagePurescript; createDbDirectories; run \"db\" \"8090\" \"target/db/\"",
 )
 addCommandAlias(
   "cleanAll",

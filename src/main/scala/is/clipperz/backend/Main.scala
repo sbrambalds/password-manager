@@ -151,8 +151,8 @@ object Main extends zio.ZIOAppDefault:
                     val s3 = zio.s3
                                 .live(
                                     Region.US_EAST_1,
-                                    AwsBasicCredentials.create("minioadmin", "minioadmin"),
-                                    Some(URI.create("http://localhost:9000")),
+                                    AwsBasicCredentials.create("admin", "password123"),
+                                    Some(URI(sys.env.getOrElse("MINIO_ENDPOINT", "http://localhost:9000"))),
                                     forcePathStyle = Some(true)
                                 )
                     Right(

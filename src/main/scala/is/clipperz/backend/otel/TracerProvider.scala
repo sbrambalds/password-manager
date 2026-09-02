@@ -21,9 +21,9 @@ object TracerProvider:
     val signozEndpoint =  "https://ingest.eu.signoz.cloud:443"
     val apiKey = "7f1530b6-72f9-4554-aa60-a729bf9bdf4a"
 
-    def default(resourceName: String): RIO[Scope, SdkTracerProvider] =
+    def otlpGrpc(resourceName: String): RIO[Scope, SdkTracerProvider] =
         for {
-            spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcSpanExporter.builder().build()))
+            spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcSpanExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
             spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(BatchSpanProcessor.builder(spanExporter).build()))
             tracerProvider <-
                 ZIO.fromAutoCloseable(
@@ -32,27 +32,6 @@ object TracerProvider:
                         .builder()
                         .setResource(Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, resourceName)))
                         .addSpanProcessor(spanProcessor)
-                        .build()
-                    )
-                )
-        } yield tracerProvider
-
-    def otlpGrpc(resourceName: String): RIO[Scope, SdkTracerProvider] =
-        for {
-            spanExporter <- ZIO.attempt:
-                OtlpGrpcSpanExporter.builder()
-                    .setEndpoint(signozEndpoint)
-                    .addHeader("signoz-api-key", apiKey)
-                    .build()
-            spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
-            tracerProvider <-
-                ZIO.fromAutoCloseable(
-                    ZIO.succeed(
-                        SdkTracerProvider.builder()
-                            .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
-                            .setResource(Resource.create(
-                            Attributes.of(ServiceAttributes.SERVICE_NAME, resourceName)
-                            ))
                         .build()
                     )
                 )

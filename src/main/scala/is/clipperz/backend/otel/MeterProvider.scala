@@ -13,7 +13,7 @@ object MeterProvider:
 
   def otlpGrpc(resourceName: String): RIO[Scope, SdkMeterProvider] =
     for {
-        meterExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcMetricExporter.builder().build()))
+        meterExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcMetricExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
         metricReader    <- ZIO.fromAutoCloseable(ZIO.succeed(PeriodicMetricReader.builder(meterExporter).setInterval(30.seconds).build()))
         meterProvider   <-
             ZIO.fromAutoCloseable(

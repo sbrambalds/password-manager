@@ -33,15 +33,21 @@ case class BlobDb(
 ) extends DbTable derives DbCodec
 
 extension [T <: DbTable](repo: Repo[T, T, Key])
+   def name: String =
+      repo match
+         case _: BlobRepo         => "blobs"
+         case _: UserRepo         => "users"
+         case _: OneTimeShareRepo => "shares"
+
    def createTable(transactor: Transactor) =
       repo match
-         case _: BlobRepo =>       
+         case _: BlobRepo =>
             transactor.transact:
                sql"create table if not exists BlobDb (hash text primary key, content text, blob blob);".update.run()
-         case _: UserRepo =>       
+         case _: UserRepo =>
             transactor.transact:
                sql"create table if not exists UserDb (hash text primary key, content text, blob blob);".update.run()
-         case _: OneTimeShareRepo =>       
+         case _: OneTimeShareRepo =>
             transactor.transact:
                sql"create table if not exists OneTimeShareDb (hash text primary key, content text, blob blob);".update.run()
 

@@ -10,7 +10,7 @@ addCommandAlias(
 )
 addCommandAlias(
   "runAllFileSystem",
-  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/one_time_share\"",
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; run \"fileSystem\" \"8090\" \"./target/archive/blobs\" \"./target/archive/users\" \"./target/archive/share\"",
 )
 addCommandAlias(
   "runAllDb",

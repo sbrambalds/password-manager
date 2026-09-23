@@ -1,7 +1,6 @@
 package is.clipperz.backend.functions
 
 import is.clipperz.backend.Exceptions.*
-import is.clipperz.backend.middleware.scheduledFileSystemMetricsCollection
 import is.clipperz.backend.sqlite.* 
 
 import java.io.{ FileNotFoundException, FileOutputStream }
@@ -45,11 +44,6 @@ import software.amazon.awssdk.utils.Md5Utils
 import zio.telemetry.opentelemetry.metrics.Meter
 import zio.s3.S3ObjectSummary
 import zio.metrics.Metric
-import is.clipperz.backend.middleware.collectS3Metrics
-import is.clipperz.backend.middleware.scheduledS3MetricsCollection
-import is.clipperz.backend.middleware.scheduledSQLiteMetricsCollection
-import is.clipperz.backend.middleware.refreshSqliteMetrics
-import is.clipperz.backend.middleware.collectFileSystemMetrics
 
 // ============================================================================
 
@@ -90,10 +84,10 @@ object KeyValueStorage:
                             case false => repo.insert(entity)
                         }
                     }    
-                _           <- refreshSqliteMetrics[T](repo, transactor).forkDaemon
             } yield ())
             .timeoutFail(new EmptyContentException)(Duration.fromMillis(WAIT_TIME)
-            ) @@ MethodTracer("saveBlobMetadata")
+            ).tap(_ => MetricsCollector.SQLiteMetricsCollector(repo, transactor).collect.forkDaemon)
+            @@ MethodTracer("saveBlobMetadata")
 
         override def getBlob(key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
             (transactor.transact:
@@ -113,7 +107,8 @@ object KeyValueStorage:
             (transactor.transact:
                 repo.deleteById(key)
             .mapError(_ => new ResourceNotFoundException("Referenced document does not exist"))
-            )@@ MethodTracer("deleteBlob")
+            ).tap(_ => MetricsCollector.SQLiteMetricsCollector(repo, transactor).collect.forkDaemon)
+            @@ MethodTracer("deleteBlob")
 
     case class FileSystemKeyValueStorage private (basePath: Path, levels: Int) extends KeyValueStorage:
 
@@ -145,7 +140,7 @@ object KeyValueStorage:
                 case ex: EmptyContentException => ZIO.fail(ex)
                 case ex: NonReadableArchiveException => ZIO.fail(ex)
                 case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
-            .tap(_ => collectFileSystemMetrics(basePath).forkDaemon)
+            .tap(_ => MetricsCollector.FileSystemMetricsCollector(basePath).collect.forkDaemon)
 
         private def moveFile (key: Key, content: Path): ZIO[Tracing, Throwable, Unit] =
             getBlobPath(key, true)
@@ -167,8 +162,8 @@ object KeyValueStorage:
                     <&>
                     Files.deleteIfExists(pathForContentType(key, path, ContentType.Metadata))
                 )
-            // TODO: delete empty folder?
             .foldZIO(err => ZIO.fail(new NonWritableArchiveException(err.toString())), _ => ZIO.succeed(()))
+            .tap(_ => MetricsCollector.FileSystemMetricsCollector(basePath).collect.forkDaemon)
             @@ MethodTracer("deleteBlob")
 
         private def computeBlobPath (key: Key): Path =
@@ -219,17 +214,20 @@ object KeyValueStorage:
                 case ex: EmptyContentException => ZIO.fail(ex)
                 case ex: NonReadableArchiveException => ZIO.fail(ex)
                 case ex => ZIO.fail(new NonWritableArchiveException(s"${ex}"))
-            .tap(_ => collectS3Metrics(s3, bucketName).forkDaemon)
+            .tap(_ => MetricsCollector.S3MetricsCollector(s3, bucketName).collect.forkDaemon)
 
         override def saveBlob (key: Key, content:  ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
             saveData(key, content, ContentType.Blob)
-             @@ MethodTracer("saveBlob")
+            @@ MethodTracer("saveBlob")
 
         override def saveBlobWithMetadata (key: Key, content: ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit] = 
             saveData(key, content, ContentType.Blob) <*> saveData(key, metadata, ContentType.Metadata)
             @@ MethodTracer("saveBlobWithMetadata")
 
-        override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob)) @@ MethodTracer("deleteBlob")
+        override def deleteBlob (key: Key): ZIO[Tracing, Throwable, Unit] = 
+            s3.deleteObject(bucketName, computeDataPath(key, ContentType.Blob))
+            .tap(_ => MetricsCollector.S3MetricsCollector(s3, bucketName).collect.forkDaemon)
+            @@ MethodTracer("deleteBlob")
 
         private def computeDataPath (key: Key, contentType: ContentType): String = pathForContentType(key, Path(""), contentType).toString
 
@@ -249,7 +247,6 @@ object KeyValueStorage:
                         case (true,  false, true )  => ZIO.fail(new Exception(s"base folder file already exists, but is not a folder: ${basePath}"))
                         case (false, _,     true )  => ZIO.fail(new Exception(s"base folder does not exists: ${basePath}"))
                 })
-                *>  scheduledFileSystemMetricsCollection(basePath).forkDaemon
                 *>  ZIO.succeed(new FileSystemKeyValueStorage(basePath, levels))
             })
     
@@ -258,7 +255,6 @@ object KeyValueStorage:
             for {
                 transactor  <- ZIO.service[Transactor]
                 _           <- repo.createTable(transactor)
-                _           <- scheduledSQLiteMetricsCollection[T](repo, transactor).forkDaemon
             } yield(new SqlLiteKeyValueStorage[T](repo, transactor, factory))
 
     object MinIOKeyValueStorage:
@@ -281,5 +277,4 @@ object KeyValueStorage:
                                     _       <- s3.createBucket(bucketName)
                                 } yield ()
                             )
-                _       <- scheduledS3MetricsCollection(s3, bucketName).forkDaemon
             } yield new MinIOKeyValueStorage(bucketName, s3)

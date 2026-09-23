@@ -39,7 +39,7 @@ object SqlLiteStorageSpec extends ZIOSpecDefault:
   val testKey = "testKey"
   val failingKey = "failingKey"
 
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
   val environment = tracing ++ Scope.default
 
   def storageSuite[T <: DbTable](name: String, repo: Repo[T, T, Key], ctor: (Key, String, Array[Byte]) => T) =

@@ -37,7 +37,7 @@ object BlobManagerSpec extends ZIOSpecDefault:
   val failingKey = HexString("d1d733a8041744d6e4b7b991b5f38df48a3767acd674c9df231c92068801a789")
   val identifier = HexString("abba")
 
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
   val environment = Scope.default ++ tracing ++ blobManagerLayer
 
   def spec = suite("BlobManager")(

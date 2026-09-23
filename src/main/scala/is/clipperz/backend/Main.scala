@@ -82,6 +82,8 @@ object Main extends zio.ZIOAppDefault:
 
     val run = ZIOAppArgs.getArgs.flatMap ( args => {
 
+        val backendType = args(0)
+
         val port      = args.lift(1).flatMap(s => Try(s.toInt).toOption)
                             .getOrElse(sys.error("Missing or invalid port argument"))
 
@@ -98,7 +100,7 @@ object Main extends zio.ZIOAppDefault:
             .maxThreads(nThreads)
 
         val configLayer     = (ZLayer.succeed(config) ++ ZLayer.succeed(nettyConfig)) >>> Server.customized
-        val otelCore        = OtelSdk.custom(sourceName) ++ OpenTelemetry.contextZIO ++ PropagatorProvider.live()
+        val otelCore        = OtelSdk.custom(sourceName, backendType) ++ OpenTelemetry.contextZIO ++ PropagatorProvider.live()
         val servicesLayer   = PRNG.live >>> (SrpManager.v6a() ++ SessionManager.live(30.minutes) ++ TollManager.live)
 
         val otelTracing     = otelCore >>> (OpenTelemetry.tracing(instrumentationScopeName))
@@ -106,7 +108,7 @@ object Main extends zio.ZIOAppDefault:
         val otelMetrics     = otelCore >>> (OpenTelemetry.metrics(instrumentationScopeName))
         val clipperzLayer   = otelCore ++ servicesLayer ++ configLayer
 
-        val storageLayerValue = args(0) match
+        val storageLayerValue = backendType match
             case "fileSystem" =>
                 if args.length == 5
                 then

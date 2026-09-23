@@ -30,7 +30,7 @@ object UserManagerSpec extends ZIOSpecDefault:
   val userBasePath = FileSystem.default.getPath("target", "tests", "Manager", "users")
 
   val keyBlobManagerFolderDepth = 16
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
   val environment = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false) ++ tracing 
 
   val c = HexString("abcdef0192837465")

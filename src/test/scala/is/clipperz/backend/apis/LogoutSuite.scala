@@ -59,7 +59,7 @@ object LogoutSpec extends ZIOSpecDefault:
   val prng = PRNG.live;
   val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
   val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
   val environment : ZLayer[Any, Throwable, is.clipperz.backend.services.SrpManager &
     zio.telemetry.opentelemetry.tracing.Tracing &

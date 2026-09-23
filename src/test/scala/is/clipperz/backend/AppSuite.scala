@@ -69,9 +69,9 @@ object AppSpec extends ZIOSpecDefault:
     val keyBlobManagerFolderDepth = 16
 
     val environment =
-        OtelSdk.custom("Test") ++
+        OtelSdk.custom("Test", "Test") ++
         OpenTelemetry.contextZIO ++
-        ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("AppSpec")) ++
+        ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("AppSpec")) ++
         PropagatorProvider.live() ++
         PRNG.live ++
         (PRNG.live >>> SessionManager.live()) ++

@@ -41,7 +41,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
   val levels = 16
   val sourceName = "test"
   val instrumentationScopeName = "testScope"
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
     val environment =
         tracing ++

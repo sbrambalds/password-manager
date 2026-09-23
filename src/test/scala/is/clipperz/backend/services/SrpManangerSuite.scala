@@ -42,9 +42,9 @@ object SrpManangerSpec extends ZIOSpecDefault:
 
   val layers =
     archive ++
-      OtelSdk.custom("Test") ++
+      OtelSdk.custom("Test", "Test") ++
       OpenTelemetry.contextZIO ++
-      ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("SrpManangerSpec")) ++
+      ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("SrpManangerSpec")) ++
       PropagatorProvider.live() ++
       PRNG.live ++
       (PRNG.live >>> SessionManager.live()) ++

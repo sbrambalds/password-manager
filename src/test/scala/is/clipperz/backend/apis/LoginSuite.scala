@@ -60,7 +60,7 @@ object LoginSpec extends ZIOSpec[Tracing & UserManager & BlobManager]:
 
     val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);
     val blobManager = BlobManager.fileSystem(blobBasePath, keyBlobManagerFolderDepth, false);
-    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+    val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
     val bootstrapEnvironment = 
         // (OtelSdk.custom("Test") ++

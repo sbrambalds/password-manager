@@ -11,7 +11,7 @@ import io.opentelemetry.semconv.ServiceAttributes
 
 object MeterProvider:
 
-  def otlpGrpc(resourceName: String): RIO[Scope, SdkMeterProvider] =
+  def otlpGrpc(resourceName: String, backendType: String): RIO[Scope, SdkMeterProvider] =
     for {
         meterExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcMetricExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
         metricReader    <- ZIO.fromAutoCloseable(ZIO.succeed(PeriodicMetricReader.builder(meterExporter).setInterval(30.seconds).build()))
@@ -21,7 +21,10 @@ object MeterProvider:
                     SdkMeterProvider
                     .builder()
                     .registerMetricReader(metricReader)
-                    .setResource(Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, resourceName)))
+                    .setResource(Resource.create(Attributes.builder()
+                        .put(ServiceAttributes.SERVICE_NAME, resourceName)
+                        .put("backend.type", backendType)
+                        .build()))
                     .build()
                 )
             )

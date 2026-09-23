@@ -7,12 +7,12 @@ import io.opentelemetry.api
 
 object OtelSdk:
 
-    def custom(resourceName: String): TaskLayer[api.OpenTelemetry] =
+    def custom(resourceName: String, backendType: String): TaskLayer[api.OpenTelemetry] =
         OpenTelemetry.custom(
             for {
-                tracerProvider <- TracerProvider.otlpGrpc(resourceName)
-                meterProvider  <- MeterProvider .otlpGrpc(resourceName)
-                loggerProvider <- LoggerProvider.otlpGrpc(resourceName)
+                tracerProvider <- TracerProvider.otlpGrpc(resourceName, backendType)
+                meterProvider  <- MeterProvider .otlpGrpc(resourceName, backendType)
+                loggerProvider <- LoggerProvider.otlpGrpc(resourceName, backendType)
                 openTelemetry  <- ZIO.succeed(
                                     OpenTelemetrySdk
                                         .builder()

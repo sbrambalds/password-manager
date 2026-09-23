@@ -34,7 +34,7 @@ import zio.telemetry.opentelemetry.OpenTelemetry
 
 object HashCashMiddlewareSpec extends ZIOSpecDefault:
 
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
   val layers =
     PRNG.live ++

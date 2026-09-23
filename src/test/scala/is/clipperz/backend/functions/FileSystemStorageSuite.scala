@@ -31,7 +31,7 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
   val testKey = "testKey"
   val failingKey = "failingKey"
 
-  val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+  val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
   val environment = tracing ++ Scope.default
 
   def spec = suite("FileSystemValueStorage")(

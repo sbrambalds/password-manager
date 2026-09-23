@@ -41,7 +41,7 @@ object BlobSpec extends ZIOSpecDefault:
 
     val keyBlobManagerFolderDepth = 16
 
-    val tracing = ((OtelSdk.custom("Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
+    val tracing = ((OtelSdk.custom("Test", "Test") ++ OpenTelemetry.contextZIO) >>> OpenTelemetry.tracing("LoginSpec"))
 
     val prng = PRNG.live;
     val userManager = UserManager.fileSystem(userBasePath, keyBlobManagerFolderDepth, false);

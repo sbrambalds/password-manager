@@ -7,25 +7,28 @@ import zio.test.{ ZIOSpecDefault, assertTrue, assert, assertCompletes, assertZIO
 import zio.nio.file.{ FileSystem }
 import zio.ZIO
 
-import is.clipperz.backend.middleware.collectFileSystemMetrics
+import is.clipperz.backend.functions.MetricsCollector
 
 object FileSystemMetricsSuite extends ZIOSpecDefault:
 
   def spec = suite("FileSystemMetrics")(
     test("countFileNumber - folder with one file") {
-      for {
-        result <- collectFileSystemMetrics(FileSystem.default.getPath("./src/test/resources/sizeTest/singleFile"))
-      } yield assertTrue(result._1 == 1, result._2 == 1018269)
-    } + 
+      val metricsCollector = MetricsCollector.FileSystemMetricsCollector(FileSystem.default.getPath("./src/test/resources/sizeTest/singleFile"))
+      for
+          result  <-  metricsCollector.collect
+      yield assertTrue(result.get("files.count").get == 1, result.get("files.size").get == 1018269)
+    } +
     test("countFileNumber - single nested folders") {
+      val metricsCollector = MetricsCollector.FileSystemMetricsCollector(FileSystem.default.getPath("./src/test/resources/sizeTest/singleNestedFolders"))
       for {
-        result <- collectFileSystemMetrics(FileSystem.default.getPath("./src/test/resources/sizeTest/singleNestedFolders"))
-      } yield assertTrue(result._1 == 15, result._2 == 2304)
+          result  <-  metricsCollector.collect
+      } yield(assertTrue(result.get("files.count").get == 15, result.get("files.size").get == 2304))
     } + 
     test("countFileNumber - multiple nested folders") {
+      val metricsCollector = MetricsCollector.FileSystemMetricsCollector(FileSystem.default.getPath("./src/test/resources/sizeTest/multipleNestedFolders"))
       for {
-        result <- collectFileSystemMetrics(FileSystem.default.getPath("./src/test/resources/sizeTest/multipleNestedFolders"))
-      } yield assertTrue(result._1 == 23, result._2 == 3376)
+          result  <-  metricsCollector.collect
+      } yield(assertTrue(result.get("files.count").get == 23, result.get("files.size").get == 3376))
     }
   )
 

@@ -31,9 +31,9 @@ trait MetricsCollector:
         measure.tap(metrics =>
             ZIO.foreachDiscard(metrics):
                 case (name, value) =>
-                    Metric.counter(name)
+                    Metric.gauge(name)
                         .tagged(MetricLabel("archive", archive))
-                        .update(value)
+                        .set(value.toDouble)
         )
 
     // final def scheduled = collect `repeat` Schedule.fixed(refreshRate)

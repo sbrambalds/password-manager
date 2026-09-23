@@ -9,7 +9,6 @@ import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
 import is.clipperz.backend.functions.KeyValueStorage
-import is.clipperz.backend.storage.ArchiveName
 
 import java.io.{ FileNotFoundException, IOException }
 import zio.nio.file.{ Files, Path }
@@ -120,7 +119,7 @@ object OneTimeShareManager:
         s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[Any, Throwable, OneTimeShareManager] =
         ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage(ArchiveName.oneTimeShares)
+            KeyValueStorage.MinIOKeyValueStorage("shares")
                 .map(new KeyValueOneTimeShareManager(_))
                 .provideLayer(s3)
         )

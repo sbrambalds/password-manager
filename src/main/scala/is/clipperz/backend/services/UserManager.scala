@@ -3,7 +3,6 @@ package is.clipperz.backend.services
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.functions.fromStream
 import is.clipperz.backend.functions.KeyValueStorage
-import is.clipperz.backend.storage.ArchiveName
 import is.clipperz.backend.Exceptions.{ BadRequestException, ResourceConflictException, ResourceNotFoundException }
 
 import zio.nio.file.Path
@@ -143,7 +142,7 @@ object UserManager:
         s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[Any, Throwable, UserManager] =
                 ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage(ArchiveName.users)
+            KeyValueStorage.MinIOKeyValueStorage("users")
             .map(new KeyValueUserManager(_))
             .provideLayer(s3)
         )

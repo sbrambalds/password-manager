@@ -6,7 +6,6 @@ import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.sqlite.*
-import is.clipperz.backend.storage.ArchiveName
 
 import java.io.{ FileNotFoundException, IOException, FileOutputStream }
 import zio.nio.file.{ Files, Path }
@@ -143,7 +142,7 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-                KeyValueStorage.MinIOKeyValueStorage(ArchiveName.blobs)
+                KeyValueStorage.MinIOKeyValueStorage("blobs")
                     .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(s3)
         )

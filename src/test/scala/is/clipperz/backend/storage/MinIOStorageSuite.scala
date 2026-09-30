@@ -1,4 +1,4 @@
-package is.clipperz.backend.functions
+package is.clipperz.backend.storage
 
 import java.security.MessageDigest
 import scala.language.postfixOps
@@ -16,7 +16,6 @@ import zio.Clock
 import zio.test.TestClock
 import zio.Duration
 import is.clipperz.backend.TestUtilities
-import is.clipperz.backend.functions.KeyValueStorageSpec.keyValueStorage
 import is.clipperz.backend.otel.PropagatorProvider
 import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.ZLayer
@@ -26,12 +25,17 @@ import is.clipperz.backend.otel.OtelSdk
 import zio.nio.file.{Path as ZPath}
 import zio.s3.S3
 import zio.nio.file.Files
+import is.clipperz.backend.storage.MinIOKeyValueStorage
+import is.clipperz.backend.storage.WAIT_TIME
 
 object MinIOStorageSpec extends ZIOSpecDefault:
 
   private val root = FileSystem.default.getPath("target", "s3Test")
 
   private val s3: ZLayer[Any, Nothing, S3] = zio.s3.stub(root)
+
+  private val metricsTestFilePath =
+    FileSystem.default.getPath("./src/test/resources/sizeTest/singleFile/4073041693a9a66983e6ffb75b521310d30e6db60afc0f97d440cb816bce7c63.blob")
 
   val testContent  = ZStream.fromIterable("testContent".getBytes.nn)
   val testMetadata = ZStream.fromIterable("testMetadata".getBytes.nn)
@@ -50,8 +54,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
 
   def storageSuite(name: String, bucketName: String) =
 
-    val keyValueStorage =
-          KeyValueStorage.MinIOKeyValueStorage(bucketName).provideLayer(s3)
+    val keyValueStorage = MinIOKeyValueStorage(bucketName).provideLayer(s3)
 
     suite(s"SqlLiteValueStorage - $name")(
       test("getBlob - fail") {
@@ -60,7 +63,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
       test("saveBlob - success") {
         for {
           _ <- keyValueStorage.flatMap(_.saveBlobWithMetadata(testKey, testContent, testMetadata, false))
-          _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
+          _ <- TestClock.adjust(Duration.fromMillis(WAIT_TIME + 10))
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
           result <- testContent.zip(content).map((a, b) => a == b).toIterator.map(_.map(_.getOrElse(false)).reduce(_ && _))
         } yield assertTrue(result)
@@ -68,7 +71,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
       test("saveBlob with failing stream - success") {
         for {
           fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
-          _     <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
+          _     <- TestClock.adjust(Duration.fromMillis(WAIT_TIME + 10))
           res   <- assertZIO(fiber.await)(fails(isSubtype[EmptyContentException](anything)))
         } yield res
       },
@@ -96,11 +99,24 @@ object MinIOStorageSpec extends ZIOSpecDefault:
       for { 
         _ <- TestUtilities.dropBucket(bucketName) 
               .provideLayer(s3) 
-      } yield() 
+      } yield()
     })
+
+  def metricsSuite =
+    suite("S3Metrics")(
+      test("countFileNumber - bucket with files") {
+        for
+            content <- Files.readAllBytes(metricsTestFilePath)
+            storage <- MinIOKeyValueStorage("metrics").provideLayer(s3)
+            _       <- storage.saveBlob("metricsKey", ZStream.fromChunk(content), false)
+            result  <- storage.collect
+        yield assertTrue(result.get("files.count").get == 1, result.get("files.size").get == 1018269)
+      }
+    ) @@ TestAspect.sequential
 
   def spec = suite("All Storages")(
     storageSuite("UserDb", "users"),
     storageSuite("BlobDb", "blobs"),
-    storageSuite("OneTimeShareDb", "one-time-shares")
+    storageSuite("OneTimeShareDb", "one-time-shares"),
+    metricsSuite
   ).provideLayerShared(environment)

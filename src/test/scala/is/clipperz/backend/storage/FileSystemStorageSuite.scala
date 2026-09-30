@@ -1,4 +1,4 @@
-package is.clipperz.backend.functions
+package is.clipperz.backend.storage
 
 import java.security.MessageDigest
 import scala.language.postfixOps
@@ -21,10 +21,12 @@ import zio.test.TestResult.{ allSuccesses }
 import is.clipperz.backend.otel.OtelSdk
 import zio.telemetry.opentelemetry.OpenTelemetry
 import zio.Scope
+import is.clipperz.backend.storage.FileSystemKeyValueStorage
+import is.clipperz.backend.storage.WAIT_TIME
 
 object KeyValueStorageSpec extends ZIOSpecDefault:
   val blobBasePath = FileSystem.default.getPath("target", "tests", "archive", "blobs")
-  val keyValueStorage = KeyValueStorage.FileSystemKeyValueStorage(blobBasePath, 1, false)
+  val keyValueStorage = FileSystemKeyValueStorage(blobBasePath, 1, false)
 
   val testContent = ZStream.fromIterable("testContent".getBytes().nn)
   val failingContent = ZStream.never
@@ -41,7 +43,7 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
     test("saveBlob - success") {
         for {
           fiber <- keyValueStorage.flatMap(_.saveBlob(testKey, testContent, false).fork)
-          _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
+          _ <- TestClock.adjust(Duration.fromMillis(WAIT_TIME + 10))
           _ <- fiber.join
           (content, _) <- keyValueStorage.flatMap(_.getBlob(testKey))
           result <- testContent.zip(content).map((a, b) => a == b).toIterator.map(_.map(_.getOrElse(false)).reduce(_ && _))
@@ -50,7 +52,7 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
     test("saveBlob with failing stream - success") {
         for {
           fiber <- keyValueStorage.flatMap(_.saveBlob(failingKey, failingContent, false).fork)
-          _ <- TestClock.adjust(Duration.fromMillis(KeyValueStorage.WAIT_TIME + 10))
+          _ <- TestClock.adjust(Duration.fromMillis(WAIT_TIME + 10))
           res <- assertZIO(fiber.await)(fails(isSubtype[EmptyContentException](anything)))
         } yield res
     } +
@@ -72,6 +74,24 @@ object KeyValueStorageSpec extends ZIOSpecDefault:
             res <- assertZIO(keyValueStorage.flatMap(_.getBlob(testKey).exit))(fails(isSubtype[ResourceNotFoundException](anything)))
             _   <- keyValueStorage.flatMap(_.deleteBlob(testKey))
         } yield allSuccesses(res, assertCompletes)
+    } +
+    test("countFileNumber - folder with one file") {
+      for
+          metricsCollector  <-  FileSystemKeyValueStorage(FileSystem.default.getPath("./src/test/resources/sizeTest/singleFile"), 1, false)
+          result            <-  metricsCollector.collect
+      yield assertTrue(result.get("files.count").get == 1, result.get("files.size").get == 1018269)
+    } +
+    test("countFileNumber - single nested folders") {
+      for
+          metricsCollector  <-  FileSystemKeyValueStorage(FileSystem.default.getPath("./src/test/resources/sizeTest/singleNestedFolders"), 1, false)
+          result            <-  metricsCollector.collect
+      yield assertTrue(result.get("files.count").get == 15, result.get("files.size").get == 2304)
+    } +
+    test("countFileNumber - multiple nested folders") {
+      for
+          metricsCollector  <-  FileSystemKeyValueStorage(FileSystem.default.getPath("./src/test/resources/sizeTest/multipleNestedFolders"), 1, false)
+          result            <-  metricsCollector.collect
+      yield assertTrue(result.get("files.count").get == 23, result.get("files.size").get == 3376)
     }
   ).provideLayerShared(environment) @@
     TestAspect.sequential @@

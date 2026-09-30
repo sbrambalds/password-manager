@@ -89,7 +89,6 @@ object Main extends zio.ZIOAppDefault:
 
         val nThreads  = args.headOption.flatMap(s => Try(s.toInt).toOption).getOrElse(0)
 
-        // Server config
         val config = Server.Config.default
             .responseCompression(Server.Config.ResponseCompressionConfig.default)
             .port(port)

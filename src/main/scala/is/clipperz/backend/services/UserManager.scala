@@ -2,7 +2,6 @@ package is.clipperz.backend.services
 
 import is.clipperz.backend.data.HexString
 import is.clipperz.backend.functions.fromStream
-import is.clipperz.backend.functions.KeyValueStorage
 import is.clipperz.backend.Exceptions.{ BadRequestException, ResourceConflictException, ResourceNotFoundException }
 
 import zio.nio.file.Path
@@ -23,6 +22,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.S3
 import zio.s3.Live
 import software.amazon.awssdk.services.s3.model.S3Exception
+import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
 
 // ============================================================================
 
@@ -128,12 +128,12 @@ object UserManager:
         requireExistingPath: Boolean = true,
     ): ZLayer[Any, Throwable, UserManager] =
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
+            FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
         )
 
     def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, UserManager] = 
         ZLayer.scoped(
-            KeyValueStorage.SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
+            SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
                 .map(KeyValueUserManager(_))
                 .provideLayer(transactor)
         )
@@ -142,7 +142,7 @@ object UserManager:
         s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[Any, Throwable, UserManager] =
                 ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage("users")
+            MinIOKeyValueStorage("users")
             .map(new KeyValueUserManager(_))
             .provideLayer(s3)
         )

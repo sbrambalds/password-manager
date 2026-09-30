@@ -8,7 +8,6 @@ import is.clipperz.backend.data.HexString.{ bytesToHex }
 import is.clipperz.backend.Exceptions.*
 import is.clipperz.backend.functions.crypto.HashFunction
 import is.clipperz.backend.functions.fromStream
-import is.clipperz.backend.functions.KeyValueStorage
 
 import java.io.{ FileNotFoundException, IOException }
 import zio.nio.file.{ Files, Path }
@@ -31,6 +30,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.S3
 import zio.s3.Live
 import software.amazon.awssdk.services.s3.model.S3Exception
+import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
 
 // ----------------------------------------------------------------------------
 
@@ -104,13 +104,13 @@ object OneTimeShareManager:
         requireExistingPath: Boolean = true,
     ): ZLayer[Any, Throwable, OneTimeShareManager] =
         ZLayer.scoped(
-            KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+            FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
                 .map(new KeyValueOneTimeShareManager(_))
         )
 
     def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, OneTimeShareManager] = 
         ZLayer.scoped(
-            KeyValueStorage.SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
+            SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
                 .map(KeyValueOneTimeShareManager(_))
                 .provideLayer(transactor)
         )
@@ -119,7 +119,7 @@ object OneTimeShareManager:
         s3: ZLayer[Any, S3Exception, S3]
     ): ZLayer[Any, Throwable, OneTimeShareManager] =
         ZLayer.scoped(
-            KeyValueStorage.MinIOKeyValueStorage("shares")
+            MinIOKeyValueStorage("shares")
                 .map(new KeyValueOneTimeShareManager(_))
                 .provideLayer(s3)
         )

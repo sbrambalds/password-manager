@@ -15,10 +15,8 @@ import zio.{ Chunk, Duration, ZIO, ZLayer, Task }
 import zio.stream.{ ZStream, ZSink }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder }
 import zio.nio.charset.Charset
-import is.clipperz.backend.functions.KeyValueStorage
 import com.augustnagro.magnum.magzio.Transactor
 import com.augustnagro.magnum.Repo
-import is.clipperz.backend.functions.Key
 import zio.telemetry.opentelemetry.tracing.Tracing
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.Live
@@ -26,6 +24,7 @@ import zio.s3.S3
 import software.amazon.awssdk.services.s3.model.S3Exception
 import zio.telemetry.opentelemetry.metrics.Meter
 import zio.telemetry.opentelemetry.OpenTelemetry
+import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
 
 // ----------------------------------------------------------------------------
 
@@ -119,7 +118,7 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             initializeBlobArchive(baseTmpPath) *>
-                KeyValueStorage.FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
+                FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
                     .map(KeyValueBlobManager(_, baseTmpPath))
         )
 
@@ -130,7 +129,7 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-                KeyValueStorage.SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
+                SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
                     .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(transactor)
         )
@@ -142,7 +141,7 @@ object BlobManager:
         val baseTmpPath: Path = basePath / "tmp"
         ZLayer.scoped(
             (initializeBlobArchive(baseTmpPath) *>
-                KeyValueStorage.MinIOKeyValueStorage("blobs")
+                MinIOKeyValueStorage("blobs")
                     .map(KeyValueBlobManager(_, baseTmpPath))
             ).provideLayer(s3)
         )

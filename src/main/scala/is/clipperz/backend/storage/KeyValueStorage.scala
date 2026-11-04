@@ -46,6 +46,14 @@ import zio.s3.S3ObjectSummary
 import zio.metrics.Metric
 import zio.metrics.MetricLabel
 import zio.Schedule
+import zio.nio.file.FileSystem
+import is.clipperz.backend.services.UserManager
+import is.clipperz.backend.services.BlobManager
+import is.clipperz.backend.services.OneTimeShareManager
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.regions.Region
+import java.net.URI
+import zio.UIO
 
 // ============================================================================
 
@@ -91,3 +99,64 @@ trait KeyValueStorage:
     def getMetadata          (key: Key): ZIO[Tracing, Throwable, ZStream[Any, Throwable, Byte]]
     def deleteBlob           (key: Key): ZIO[Tracing, Throwable, Unit]
     def saveBlob             (key: Key, content: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit]
+
+object KeyValueStorage:
+
+    val keyValueStorageFolderDepth = 16
+
+    def apply[T >: KeyValueStorage](args: Chunk[String], archive: String): Either[zio.UIO[Unit], Task[T]] =
+        args(0) match
+            case "fileSystem" =>
+                if args.length == 5
+                then
+                    val blobBasePath         = FileSystem.default.getPath(args(2))
+                    val userBasePath         = FileSystem.default.getPath(args(3))
+                    val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
+
+                    Right(archive match 
+                        case "user"     =>  FileSystemKeyValueStorage(userBasePath, keyValueStorageFolderDepth, true)
+                        case "blob"     =>  FileSystemKeyValueStorage(blobBasePath, keyValueStorageFolderDepth, true)
+                        case "shares"   =>  FileSystemKeyValueStorage(oneTimeShareBasePath, keyValueStorageFolderDepth, true)
+                    )
+                    
+                else Left(ZIO.logFatal("Not enough arguments"))
+            case "db" =>
+                if args.length == 3
+                then
+                    val blobPath = FileSystem.default.getPath("target/blobs")
+
+                    val dataSourceConfig = new HikariConfig()
+                    dataSourceConfig.setJdbcUrl("jdbc:sqlite:" + args(2) + "clipperzDb.db")
+                    dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
+                    dataSourceConfig.setMaximumPoolSize(1) 
+                
+                    val dataSource = new HikariDataSource(dataSourceConfig)
+                    val transactor = Transactor.layer(dataSource)
+
+                    Right(archive match 
+                            case "user"     =>  SqlLiteKeyValueStorage(new UserRepo(), UserDb.apply).provideLayer(transactor)  
+                            case "blob"     =>  SqlLiteKeyValueStorage(new BlobRepo(), BlobDb.apply).provideLayer(transactor)  
+                            case "shares"   =>  SqlLiteKeyValueStorage(new OneTimeShareRepo(), OneTimeShareDb.apply).provideLayer(transactor)  
+                    )
+
+                else Left(ZIO.logFatal("Not enough arguments"))
+            case "s3" =>
+                if args.length == 2
+                then
+                    val blobPath = FileSystem.default.getPath("target/blobs")
+
+                    val s3 = zio.s3
+                                .live(
+                                    Region.US_EAST_1,
+                                    AwsBasicCredentials.create("admin", "password123"),
+                                    Some(URI(sys.env.getOrElse("MINIO_ENDPOINT", "http://localhost:9000"))),
+                                    forcePathStyle = Some(true)
+                                )
+                    
+                    Right(MinIOKeyValueStorage(archive).provideLayer(s3))
+
+                else Left(ZIO.logFatal("Not enough arguments"))
+
+            case _ => Left(ZIO.logFatal("Error during running"))
+
+        

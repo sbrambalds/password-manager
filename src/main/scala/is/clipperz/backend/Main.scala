@@ -107,66 +107,11 @@ object Main extends zio.ZIOAppDefault:
         val otelMetrics     = otelCore >>> (OpenTelemetry.metrics(instrumentationScopeName))
         val clipperzLayer   = otelCore ++ servicesLayer ++ configLayer
 
-        val storageLayerValue = backendType match
-            case "fileSystem" =>
-                if args.length == 5
-                then
-                    val blobBasePath         = FileSystem.default.getPath(args(2))
-                    val userBasePath         = FileSystem.default.getPath(args(3))
-                    val oneTimeShareBasePath = FileSystem.default.getPath(args(4))
-
-                    Right(
-                        UserManager.fileSystem(userBasePath, keyValueStorageFolderDepth, true) ++
-                        BlobManager.fileSystem(blobBasePath, keyValueStorageFolderDepth, true) ++
-                        OneTimeShareManager.fileSystem(oneTimeShareBasePath, keyValueStorageFolderDepth, true)
-                    )
-
-                else Left(ZIO.logFatal("Not enough arguments"))
-
-            case "db" =>
-                if args.length == 3
-                then
-                    val blobPath = FileSystem.default.getPath("target/blobs")
-
-                    val dataSourceConfig = new HikariConfig()
-                    dataSourceConfig.setJdbcUrl("jdbc:sqlite:" + args(2) + "clipperzDb.db")
-                    dataSourceConfig.setDriverClassName("org.sqlite.JDBC")
-                    dataSourceConfig.setMaximumPoolSize(1) 
-                
-                    val dataSource = new HikariDataSource(dataSourceConfig)
-                    val transactor = Transactor.layer(dataSource)
-
-                    Right(
-                        UserManager.sqlLite(transactor) ++
-                        BlobManager.sqlLite(blobPath, transactor) ++
-                        OneTimeShareManager.sqlLite(transactor) 
-                    )
-
-                else Left(ZIO.logFatal("Not enough arguments"))
-
-            case "s3" =>
-                if args.length == 2
-                then
-                    val blobPath = FileSystem.default.getPath("target/blobs")
-    
-                    val s3 = zio.s3
-                                .live(
-                                    Region.US_EAST_1,
-                                    AwsBasicCredentials.create("admin", "password123"),
-                                    Some(URI(sys.env.getOrElse("MINIO_ENDPOINT", "http://localhost:9000"))),
-                                    forcePathStyle = Some(true)
-                                )
-                    Right(
-                        s3 >>> (
-                            UserManager.minIO(s3) ++
-                            BlobManager.minIO(blobPath, s3) ++
-                            OneTimeShareManager.minIO(s3)
-                        )
-                    )
-
-                else Left(ZIO.logFatal("Not enough arguments"))
-
-            case _ => Left(ZIO.logFatal("Error during running"))
+        val storageLayerValue = for {
+            user    <- UserManager(args)
+            blob    <- BlobManager(args)
+            share   <- OneTimeShareManager(args)
+        } yield( user ++ blob ++ share )
 
         storageLayerValue match
             case Right(storageLayer) => 
@@ -182,5 +127,5 @@ object Main extends zio.ZIOAppDefault:
                         otelMetrics,
                         OpenTelemetry.zioMetrics
                     ).tapError(e => ZIO.logError(s"Server failed with error: ${e.getMessage}"))
-            case Left(error) => error
+            case Left(_) => ZIO.logError(s"Server failed with error")
     })

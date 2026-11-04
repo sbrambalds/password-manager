@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception
 import zio.telemetry.opentelemetry.metrics.Meter
 import zio.telemetry.opentelemetry.OpenTelemetry
 import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
+import zio.nio.file.FileSystem
 
 // ----------------------------------------------------------------------------
 
@@ -39,6 +40,12 @@ trait BlobManager:
 
 object BlobManager:
     val WAIT_TIME = 10000
+
+    def apply(args: Chunk[String]) : Either[zio.UIO[Unit], ZLayer[Any, Throwable, KeyValueBlobManager]] = 
+        val baseTmpPath: Path = FileSystem.default.getPath(args(2)) / "tmp"
+        KeyValueStorage(args, "user") match
+            case Right(valueStorage)    => Right(ZLayer.scoped(initializeBlobArchive(baseTmpPath) *> valueStorage.map(KeyValueBlobManager(_, baseTmpPath))))
+            case Left(error)            => Left(error)
 
     case class KeyValueBlobManager(keyValueStorage: KeyValueStorage, tmpDir: Path) extends BlobManager:
         override def getBlob(hash: BlobHash): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)] =
@@ -109,39 +116,3 @@ object BlobManager:
             }
             result
     )
-
-    def fileSystem (
-        basePath: Path,
-        levels: Int,
-        requireExistingPath: Boolean = true,
-    ): ZLayer[Any, Throwable, BlobManager] =
-        val baseTmpPath: Path = basePath / "tmp"
-        ZLayer.scoped(
-            initializeBlobArchive(baseTmpPath) *>
-                FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
-                    .map(KeyValueBlobManager(_, baseTmpPath))
-        )
-
-    def sqlLite(
-        basePath: Path, 
-        transactor: ZLayer[Any, Nothing, Transactor]
-    ): ZLayer[Any, Throwable, BlobManager] = 
-        val baseTmpPath: Path = basePath / "tmp"
-        ZLayer.scoped(
-            (initializeBlobArchive(baseTmpPath) *>
-                SqlLiteKeyValueStorage[BlobDb](new BlobRepo(), BlobDb.apply)
-                    .map(KeyValueBlobManager(_, baseTmpPath))
-            ).provideLayer(transactor)
-        )
-
-    def minIO (
-        basePath: Path,
-        s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[Any, Throwable, BlobManager] =
-        val baseTmpPath: Path = basePath / "tmp"
-        ZLayer.scoped(
-            (initializeBlobArchive(baseTmpPath) *>
-                MinIOKeyValueStorage("blobs")
-                    .map(KeyValueBlobManager(_, baseTmpPath))
-            ).provideLayer(s3)
-        )

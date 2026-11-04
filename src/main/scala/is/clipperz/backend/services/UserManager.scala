@@ -6,6 +6,7 @@ import is.clipperz.backend.Exceptions.{ BadRequestException, ResourceConflictExc
 
 import zio.nio.file.Path
 import zio.nio.charset.Charset
+import zio.prelude.CovariantOps
 
 import zio.{ ZIO, ZLayer, Tag, Task, Chunk }
 import zio.json.{ JsonDecoder, JsonEncoder, DeriveJsonDecoder, DeriveJsonEncoder, EncoderOps }
@@ -23,6 +24,7 @@ import zio.s3.S3
 import zio.s3.Live
 import software.amazon.awssdk.services.s3.model.S3Exception
 import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
+import is.clipperz.backend.Main.keyValueStorageFolderDepth
 
 // ============================================================================
 
@@ -92,6 +94,12 @@ trait UserManager:
     def deleteUser(c: HexString): ZIO[Tracing, Throwable, Unit]
 
 object UserManager:
+
+    def apply(args: Chunk[String]) : Either[zio.UIO[Unit], ZLayer[Any, Throwable, KeyValueUserManager]] = 
+        KeyValueStorage(args, "user") match
+            case Right(valueStorage)    => Right(ZLayer.scoped(valueStorage.map(KeyValueUserManager(_))))
+            case Left(error)            => Left(error)
+
     case class KeyValueUserManager(keyBlobStorage: KeyValueStorage) extends UserManager:
         override def getUser(username: HexString): ZIO[Tracing, Throwable, Option[RemoteUserCard]] =
             keyBlobStorage
@@ -121,28 +129,3 @@ object UserManager:
                 then keyBlobStorage.deleteBlob(c.toString)
                 else ZIO.fail(new ResourceNotFoundException("User does not exist"))
             )
-
-    def fileSystem(
-        basePath: Path,
-        levels: Int,
-        requireExistingPath: Boolean = true,
-    ): ZLayer[Any, Throwable, UserManager] =
-        ZLayer.scoped(
-            FileSystemKeyValueStorage(basePath, levels, requireExistingPath).map(new KeyValueUserManager(_))
-        )
-
-    def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, UserManager] = 
-        ZLayer.scoped(
-            SqlLiteKeyValueStorage[UserDb](new UserRepo(), UserDb.apply)
-                .map(KeyValueUserManager(_))
-                .provideLayer(transactor)
-        )
-
-    def minIO(
-        s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[Any, Throwable, UserManager] =
-                ZLayer.scoped(
-            MinIOKeyValueStorage("users")
-            .map(new KeyValueUserManager(_))
-            .provideLayer(s3)
-        )

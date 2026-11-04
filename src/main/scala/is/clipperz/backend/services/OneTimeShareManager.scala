@@ -58,6 +58,11 @@ trait OneTimeShareManager:
 
 object OneTimeShareManager:
 
+    def apply(args: Chunk[String]) : Either[zio.UIO[Unit], ZLayer[Any, Throwable, KeyValueOneTimeShareManager]] = 
+        KeyValueStorage(args, "user") match
+            case Right(valueStorage)    => Right(ZLayer.scoped(valueStorage.map(KeyValueOneTimeShareManager(_))))
+            case Left(error)            => Left(error)
+
     case class KeyValueOneTimeShareManager(keyBlobArchive: KeyValueStorage) extends OneTimeShareManager:
         override def getSecret(id: SecretId): ZIO[Tracing, Throwable, (OneTimeSecret, Long)] =
             keyBlobArchive.getBlob(id).flatMap((content, contentLength) => fromStream[OneTimeSecret](content).zip(ZIO.succeed(contentLength)))
@@ -97,29 +102,3 @@ object OneTimeShareManager:
                 if (result == false)
                     throw new IOException("Failed initialization of temporary blob directory")
             )
-
-    def fileSystem(
-        basePath: Path,
-        levels: Int,
-        requireExistingPath: Boolean = true,
-    ): ZLayer[Any, Throwable, OneTimeShareManager] =
-        ZLayer.scoped(
-            FileSystemKeyValueStorage(basePath, levels, requireExistingPath)
-                .map(new KeyValueOneTimeShareManager(_))
-        )
-
-    def sqlLite(transactor: ZLayer[Any, Nothing, Transactor]): ZLayer[Any, Throwable, OneTimeShareManager] = 
-        ZLayer.scoped(
-            SqlLiteKeyValueStorage[OneTimeShareDb](new OneTimeShareRepo(), OneTimeShareDb.apply)
-                .map(KeyValueOneTimeShareManager(_))
-                .provideLayer(transactor)
-        )
-
-    def minIO(
-        s3: ZLayer[Any, S3Exception, S3]
-    ): ZLayer[Any, Throwable, OneTimeShareManager] =
-        ZLayer.scoped(
-            MinIOKeyValueStorage("shares")
-                .map(new KeyValueOneTimeShareManager(_))
-                .provideLayer(s3)
-        )

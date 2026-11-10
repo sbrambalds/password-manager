@@ -104,7 +104,7 @@ object KeyValueStorage:
 
     val keyValueStorageFolderDepth = 16
 
-    def apply[T >: KeyValueStorage](args: Chunk[String], archive: String): Either[zio.UIO[Unit], Task[T]] =
+    def apply[T >: KeyValueStorage](args: Chunk[String], archive: String): Either[zio.UIO[Unit], ZIO[Scope, Throwable, T]] =
         args(0) match
             case "fileSystem" =>
                 if args.length == 5
@@ -141,19 +141,19 @@ object KeyValueStorage:
 
                 else Left(ZIO.logFatal("Not enough arguments"))
             case "s3" =>
-                if args.length == 2
+                if args.length == 3
                 then
                     val blobPath = FileSystem.default.getPath("target/blobs")
 
                     val s3 = zio.s3
                                 .live(
                                     Region.US_EAST_1,
-                                    AwsBasicCredentials.create("admin", "password123"),
-                                    Some(URI(sys.env.getOrElse("MINIO_ENDPOINT", "http://localhost:9000"))),
+                                    AwsBasicCredentials.create("admin", "Password123"),
+                                    Some(URI(sys.env.getOrElse("RUSTFS_ENDPOINT", "http://localhost:9000"))),
                                     forcePathStyle = Some(true)
                                 )
                     
-                    Right(MinIOKeyValueStorage(archive).provideLayer(s3))
+                    Right(s3.build.flatMap(env => RustFSKeyValueStorage(archive).provideEnvironment(env)))
 
                 else Left(ZIO.logFatal("Not enough arguments"))
 

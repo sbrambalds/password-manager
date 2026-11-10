@@ -24,7 +24,7 @@ import zio.s3.S3
 import software.amazon.awssdk.services.s3.model.S3Exception
 import zio.telemetry.opentelemetry.metrics.Meter
 import zio.telemetry.opentelemetry.OpenTelemetry
-import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
+import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, RustFSKeyValueStorage, SqlLiteKeyValueStorage}
 import zio.nio.file.FileSystem
 
 // ----------------------------------------------------------------------------

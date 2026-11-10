@@ -13,7 +13,7 @@ import zio.s3.S3
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.utils.Md5Utils
 
-case class MinIOKeyValueStorage private (bucketName: String, s3: S3) extends KeyValueStorage:
+case class RustFSKeyValueStorage private (bucketName: String, s3: S3) extends KeyValueStorage:
 
     protected def archive: String = bucketName
 
@@ -72,26 +72,18 @@ case class MinIOKeyValueStorage private (bucketName: String, s3: S3) extends Key
             } yield (Map("files.count" -> count, "files.size" -> space))
         )
 
-object MinIOKeyValueStorage:
+object RustFSKeyValueStorage:
     def apply(
         bucketName: String
-    ): ZIO[S3, Throwable, MinIOKeyValueStorage] = 
+    ): ZIO[S3, Throwable, RustFSKeyValueStorage] = 
         for {
-            s3          <- ZIO.service[S3]
-            exists      <- s3.isBucketExists(bucketName)
-            _           <- ZIO.when(exists)(
-                            for {
-                                objects <- s3.listAllObjects(bucketName).runCollect
-                                _       <- ZIO.foreachDiscard(objects)(obj => s3.deleteObject(bucketName, obj.key))
-                                _       <- s3.deleteBucket(bucketName)
-                                _       <- s3.createBucket(bucketName)
-                            } yield ()
-                        )
+            s3          <-  ZIO.service[S3]
+            exists      <-  s3.isBucketExists(bucketName)
             _           <-  ZIO.when(!exists)(
-                            for {
-                                _       <- s3.createBucket(bucketName)
-                            } yield ()
-                        )
-            storage     =   new MinIOKeyValueStorage(bucketName, s3)
+                                for {
+                                    _           <- s3.createBucket(bucketName)
+                                } yield ()
+                            )
+            storage     =   new RustFSKeyValueStorage(bucketName, s3)
             _           <-  storage.scheduled.forkDaemon
         } yield storage

@@ -6,7 +6,7 @@ addCommandAlias(
 )
 addCommandAlias(
   "runAllS3", 
-  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; startS3; run \"s3\" \"8090\""
+  "installPurescript; buildPurescript; packagePurescript; createFSDirectories; startS3; run \"s3\" \"8090\" \"target/db/\""
 )
 addCommandAlias(
   "runAllFileSystem",

@@ -25,7 +25,7 @@ import is.clipperz.backend.otel.OtelSdk
 import zio.nio.file.{Path as ZPath}
 import zio.s3.S3
 import zio.nio.file.Files
-import is.clipperz.backend.storage.MinIOKeyValueStorage
+import is.clipperz.backend.storage.RustFSKeyValueStorage
 import is.clipperz.backend.storage.WAIT_TIME
 
 object MinIOStorageSpec extends ZIOSpecDefault:
@@ -54,7 +54,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
 
   def storageSuite(name: String, bucketName: String) =
 
-    val keyValueStorage = MinIOKeyValueStorage(bucketName).provideLayer(s3)
+    val keyValueStorage = RustFSKeyValueStorage(bucketName).provideLayer(s3)
 
     suite(s"SqlLiteValueStorage - $name")(
       test("getBlob - fail") {
@@ -107,7 +107,7 @@ object MinIOStorageSpec extends ZIOSpecDefault:
       test("countFileNumber - bucket with files") {
         for
             content <- Files.readAllBytes(metricsTestFilePath)
-            storage <- MinIOKeyValueStorage("metrics").provideLayer(s3)
+            storage <- RustFSKeyValueStorage("metrics").provideLayer(s3)
             _       <- storage.saveBlob("metricsKey", ZStream.fromChunk(content), false)
             result  <- storage.collect
         yield assertTrue(result.get("files.count").get == 1, result.get("files.size").get == 1018269)

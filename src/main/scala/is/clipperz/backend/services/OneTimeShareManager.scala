@@ -30,7 +30,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import zio.s3.S3
 import zio.s3.Live
 import software.amazon.awssdk.services.s3.model.S3Exception
-import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, MinIOKeyValueStorage, SqlLiteKeyValueStorage}
+import is.clipperz.backend.storage.{FileSystemKeyValueStorage, KeyValueStorage, RustFSKeyValueStorage, SqlLiteKeyValueStorage}
 
 // ----------------------------------------------------------------------------
 

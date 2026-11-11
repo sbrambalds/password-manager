@@ -14,7 +14,7 @@ import io.opentelemetry.api.common.AttributesBuilder
 
 object LoggerProvider:
 
-  def otlpGrpc(resourceName: String, backendType: String): RIO[Scope, SdkLoggerProvider] =
+  def otlpGrpc(resourceName: String): RIO[Scope, SdkLoggerProvider] =
     for {
       logRecordExporter  <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcLogRecordExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
       logRecordProcessor <- ZIO.fromAutoCloseable(
@@ -31,7 +31,6 @@ object LoggerProvider:
               .builder()
               .setResource(Resource.create(Attributes.builder()
                   .put(ServiceAttributes.SERVICE_NAME, resourceName)
-                  .put("backend.type", backendType)
                   .build()))
               .addLogRecordProcessor(logRecordProcessor)
               .build()

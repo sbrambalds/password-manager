@@ -19,7 +19,7 @@ import zio.http.endpoint.openapi.JsonSchema.EnumValue.Str
 
 object TracerProvider:
 
-    def otlpGrpc(resourceName: String, backendType: String): RIO[Scope, SdkTracerProvider] =
+    def otlpGrpc(resourceName: String): RIO[Scope, SdkTracerProvider] =
         for {
             spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcSpanExporter.builder().setEndpoint("http://" + sys.env.getOrElse("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")).build()))
             spanProcessor  <- ZIO.fromAutoCloseable(ZIO.succeed(BatchSpanProcessor.builder(spanExporter).build()))
@@ -30,7 +30,6 @@ object TracerProvider:
                         .builder()
                         .setResource(Resource.create(Attributes.builder()
                             .put(ServiceAttributes.SERVICE_NAME, resourceName)
-                            .put("backend.type", backendType)
                             .build()))
                         .addSpanProcessor(spanProcessor)
                         .build()

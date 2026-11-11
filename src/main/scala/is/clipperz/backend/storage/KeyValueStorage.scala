@@ -54,6 +54,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.regions.Region
 import java.net.URI
 import zio.UIO
+import java.time.temporal.ChronoUnit
 
 // ============================================================================
 
@@ -87,12 +88,8 @@ trait KeyValueStorage:
 
     final def scheduled = collect `repeat` Schedule.fixed(refreshRate)
 
-    final def elapsedTime[E, R](label: String, tags: Set[MetricLabel])(block: => ZIO[E, Throwable, R]): ZIO[E, Throwable, R] =
-        for
-            t0      <- ZIO.succeed(System.nanoTime())
-            result  <- block.tap(_ => ZIO.succeed((System.nanoTime() - t0).toDouble * nanoToSeconds)
-                                    @@ Metric.summary(s"${label}.elapsedTime", 1.day, 100, 0.03d, Chunk(0.50, 0.75, 0.90, 0.95, 0.98)).tagged(tags))
-        yield result
+    final def elapsedTime[R, A](label: String, tags: Set[MetricLabel])(block: => ZIO[R, Throwable, A]): ZIO[R, Throwable, A] =
+        block @@ Metric.timer(s"${label}.elapsedTime", ChronoUnit.MILLIS).tagged(tags).trackDuration
 
     def saveBlobWithMetadata (key: Key, content:  ZStream[Any, Throwable, Byte], metadata: ZStream[Any, Throwable, Byte], overwrite: Boolean): ZIO[Tracing, Throwable, Unit]
     def getBlob              (key: Key): ZIO[Tracing, Throwable, (ZStream[Any, Throwable, Byte], Long)]

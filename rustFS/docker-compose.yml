@@ -19,7 +19,7 @@ services:
       RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
       RUSTFS_CONSOLE_ENABLE: "true"
     volumes:
-      - rustfs-data:/data
+      - data:/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 30s
@@ -28,4 +28,4 @@ services:
       start_period: 40s
 
 volumes:
-  rustfs-data:
+    data:

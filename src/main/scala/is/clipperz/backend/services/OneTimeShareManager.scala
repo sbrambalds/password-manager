@@ -59,7 +59,7 @@ trait OneTimeShareManager:
 object OneTimeShareManager:
 
     def apply(args: Chunk[String]) : Either[zio.UIO[Unit], ZLayer[Any, Throwable, KeyValueOneTimeShareManager]] = 
-        KeyValueStorage(args, "user") match
+        KeyValueStorage(args, "one-time-share") match
             case Right(valueStorage)    => Right(ZLayer.scoped(valueStorage.map(KeyValueOneTimeShareManager(_))))
             case Left(error)            => Left(error)
 

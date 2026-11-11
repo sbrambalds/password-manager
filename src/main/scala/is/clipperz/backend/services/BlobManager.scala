@@ -43,7 +43,7 @@ object BlobManager:
 
     def apply(args: Chunk[String]) : Either[zio.UIO[Unit], ZLayer[Any, Throwable, KeyValueBlobManager]] = 
         val baseTmpPath: Path = FileSystem.default.getPath(args(2)) / "tmp"
-        KeyValueStorage(args, "user") match
+        KeyValueStorage(args, "blob") match
             case Right(valueStorage)    => Right(ZLayer.scoped(initializeBlobArchive(baseTmpPath) *> valueStorage.map(KeyValueBlobManager(_, baseTmpPath))))
             case Left(error)            => Left(error)
 
